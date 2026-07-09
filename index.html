@@ -51,7 +51,10 @@
   <div id="cargando" class="capa" style="display:none;">
     <div class="spin"></div>
     <p style="color:#EAECEF;font-size:15px;font-weight:600;">Cargando Mi Cartera…</p>
-    <p>La primera vez tarda unos segundos</p>
+    <p id="estado">Preparando…</p>
+    <p id="reloj" style="font-size:12px;">0 s</p>
+    <pre id="detalle" style="color:#F6465D;font-size:11px;white-space:pre-wrap;max-width:320px;margin-top:10px;"></pre>
+    <button id="verReal" style="display:none;width:auto;padding:8px 14px;margin-top:14px;background:#1E2329;color:#EAECEF;">Ver pantalla real</button>
   </div>
 
   <div id="root"></div>
@@ -82,38 +85,69 @@
       return URL.createObjectURL(new Blob([plano]));
     }
 
+    // Mostrar errores en pantalla (en vez de un spinner infinito que los tapa)
+    function mostrarError(msg) {
+      $("detalle").textContent = String(msg).slice(0, 600);
+      $("estado").textContent = "Se ha producido un error:";
+      $("verReal").style.display = "inline-block";
+    }
+    window.addEventListener("error", e => mostrarError(e.message || e.error));
+    window.addEventListener("unhandledrejection", e => mostrarError(e.reason && (e.reason.message || e.reason)));
+
     function arrancarApp(dbUrl) {
       $("login").style.display = "none";
       $("cargando").style.display = "flex";
-      mount(
-        {
-          entrypoint: "dashboard/app.py",
-          requirements: ["sqlite3", "plotly", "requests"],
-          files: {
-            "dashboard/app.py":               { url: app + "app.py" },
-            "dashboard/estilo.py":            { url: app + "estilo.py" },
-            "dashboard/utilidades.py":        { url: app + "utilidades.py" },
-            "dashboard/componentes.py":       { url: app + "componentes.py" },
-            "dashboard/datos/__init__.py":    { url: app + "datos/__init__.py" },
-            "dashboard/datos/consultas.py":   { url: app + "datos/consultas.py" },
-            "dashboard/datos/precios_en_vivo.py": { url: app + "datos/precios_en_vivo.py" },
-            "dashboard/paginas/__init__.py":  { url: app + "paginas/__init__.py" },
-            "dashboard/paginas/patrimonio.py":   { url: app + "paginas/patrimonio.py" },
-            "dashboard/paginas/distribucion.py": { url: app + "paginas/distribucion.py" },
-            "dashboard/paginas/sistema.py":   { url: app + "paginas/sistema.py" },
-            "db/cartera.db":                  { url: dbUrl },
-          },
-        },
-        $("root")
-      );
-      // El .then() de mount resuelve antes de que Streamlit pinte el primer
-      // render, asi que ocultamos la capa de carga cuando aparece contenido real.
+
+      // Reloj: cuenta segundos para que se vea que avanza
+      const t0 = Date.now();
+      const reloj = setInterval(() => {
+        $("reloj").textContent = Math.round((Date.now() - t0) / 1000) + " s";
+      }, 1000);
+
+      // Espejo del estado real de stlite (que se pinta dentro de #root):
+      // asi el usuario ve "Installing packages…", etc. en lugar de un spin mudo.
       const iv = setInterval(() => {
-        if ($("root").innerText.includes("Patrimonio total")) {
+        const t = $("root").innerText || "";
+        if (t.includes("Patrimonio total")) {          // ya cargo -> quitar capa
           $("cargando").style.display = "none";
-          clearInterval(iv);
+          clearInterval(iv); clearInterval(reloj);
+          return;
         }
-      }, 300);
+        // primera linea no vacia de lo que stlite muestra ahora mismo
+        const linea = t.split("\n").map(s => s.trim()).filter(Boolean)[0];
+        if (linea) $("estado").textContent = linea;
+      }, 500);
+
+      // Boton de escape: si tarda demasiado, revela la pantalla real de stlite
+      // (donde saldria el mensaje de error o el progreso detallado)
+      $("verReal").onclick = () => { $("cargando").style.display = "none"; };
+      setTimeout(() => { $("verReal").style.display = "inline-block"; }, 45000);
+
+      try {
+        mount(
+          {
+            entrypoint: "dashboard/app.py",
+            requirements: ["sqlite3", "plotly", "requests"],
+            files: {
+              "dashboard/app.py":               { url: app + "app.py" },
+              "dashboard/estilo.py":            { url: app + "estilo.py" },
+              "dashboard/utilidades.py":        { url: app + "utilidades.py" },
+              "dashboard/componentes.py":       { url: app + "componentes.py" },
+              "dashboard/datos/__init__.py":    { url: app + "datos/__init__.py" },
+              "dashboard/datos/consultas.py":   { url: app + "datos/consultas.py" },
+              "dashboard/datos/precios_en_vivo.py": { url: app + "datos/precios_en_vivo.py" },
+              "dashboard/paginas/__init__.py":  { url: app + "paginas/__init__.py" },
+              "dashboard/paginas/patrimonio.py":   { url: app + "paginas/patrimonio.py" },
+              "dashboard/paginas/distribucion.py": { url: app + "paginas/distribucion.py" },
+              "dashboard/paginas/sistema.py":   { url: app + "paginas/sistema.py" },
+              "db/cartera.db":                  { url: dbUrl },
+            },
+          },
+          $("root")
+        ).catch(mostrarError);
+      } catch (err) {
+        mostrarError(err);
+      }
     }
 
     $("form-login").addEventListener("submit", async (e) => {
