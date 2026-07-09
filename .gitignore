@@ -1,0 +1,4 @@
+# NUNCA subir datos en claro: solo se publica cartera_movil.enc (cifrada)
+*.db
+cartera_movil.db
+.env

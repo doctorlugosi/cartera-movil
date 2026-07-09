@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black" />
+  <meta name="apple-mobile-web-app-title" content="Mi Cartera" />
+  <title>Mi Cartera</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@stlite/browser@0.83.0/build/stlite.css" />
+  <style>
+    html, body { margin: 0; padding: 0; background: #0B0E11; font-family: -apple-system, system-ui, sans-serif; }
+    #root { background: #0B0E11; }
+    .capa {
+      position: fixed; inset: 0; background: #0B0E11; color: #EAECEF;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      z-index: 9999; padding: 24px; box-sizing: border-box;
+    }
+    .capa h1 { color: #F0B90B; font-size: 22px; margin: 0 0 6px; }
+    .capa p { color: #848E9C; font-size: 13px; margin: 4px 0; text-align: center; }
+    .spin { width: 42px; height: 42px; border: 4px solid #1E2329; border-top-color: #F0B90B;
+      border-radius: 50%; animation: g 0.9s linear infinite; margin-bottom: 16px; }
+    @keyframes g { to { transform: rotate(360deg); } }
+    form { display: flex; flex-direction: column; align-items: center; gap: 12px; width: 100%; max-width: 320px; margin-top: 18px; }
+    input[type=password] {
+      width: 100%; box-sizing: border-box; padding: 14px 16px; font-size: 16px;
+      background: #1E2329; color: #EAECEF; border: 1px solid #2B3139; border-radius: 10px; outline: none;
+    }
+    input[type=password]:focus { border-color: #F0B90B; }
+    button {
+      width: 100%; padding: 14px; font-size: 16px; font-weight: 700; cursor: pointer;
+      background: #F0B90B; color: #0B0E11; border: none; border-radius: 10px;
+    }
+    button:disabled { opacity: 0.5; }
+    .err { color: #F6465D; font-size: 13px; min-height: 18px; }
+  </style>
+</head>
+<body>
+  <!-- Pantalla de contrasena -->
+  <div id="login" class="capa">
+    <h1>💰 Mi Cartera</h1>
+    <p>Introduce la contrasena para descifrar tus datos.</p>
+    <form id="form-login" autocomplete="on">
+      <input type="password" id="pwd" placeholder="Contrasena" autocomplete="current-password" />
+      <div class="err" id="err"></div>
+      <button type="submit" id="btn">Entrar</button>
+    </form>
+  </div>
+
+  <!-- Pantalla de carga (tras contrasena correcta) -->
+  <div id="cargando" class="capa" style="display:none;">
+    <div class="spin"></div>
+    <p style="color:#EAECEF;font-size:15px;font-weight:600;">Cargando Mi Cartera…</p>
+    <p>La primera vez tarda unos segundos</p>
+  </div>
+
+  <div id="root"></div>
+
+  <script type="module">
+    import { mount } from "https://cdn.jsdelivr.net/npm/@stlite/browser@0.83.0/build/stlite.js";
+
+    const PBKDF2_ITER = 200000;
+    const base = new URL(".", import.meta.url).href;
+    const app  = base + "app/dashboard/";
+
+    const $ = id => document.getElementById(id);
+
+    async function descifrarDB(password) {
+      const buf = new Uint8Array(await (await fetch(base + "cartera_movil.enc")).arrayBuffer());
+      const salt  = buf.slice(0, 16);
+      const nonce = buf.slice(16, 28);
+      const ct    = buf.slice(28);
+      const km = await crypto.subtle.importKey(
+        "raw", new TextEncoder().encode(password), "PBKDF2", false, ["deriveKey"]
+      );
+      const key = await crypto.subtle.deriveKey(
+        { name: "PBKDF2", salt, iterations: PBKDF2_ITER, hash: "SHA-256" },
+        km, { name: "AES-GCM", length: 256 }, false, ["decrypt"]
+      );
+      // lanza excepcion si la contrasena es incorrecta (fallo de autenticacion GCM)
+      const plano = await crypto.subtle.decrypt({ name: "AES-GCM", iv: nonce }, key, ct);
+      return URL.createObjectURL(new Blob([plano]));
+    }
+
+    function arrancarApp(dbUrl) {
+      $("login").style.display = "none";
+      $("cargando").style.display = "flex";
+      mount(
+        {
+          entrypoint: "dashboard/app.py",
+          requirements: ["sqlite3", "plotly", "requests"],
+          files: {
+            "dashboard/app.py":               { url: app + "app.py" },
+            "dashboard/estilo.py":            { url: app + "estilo.py" },
+            "dashboard/utilidades.py":        { url: app + "utilidades.py" },
+            "dashboard/componentes.py":       { url: app + "componentes.py" },
+            "dashboard/datos/__init__.py":    { url: app + "datos/__init__.py" },
+            "dashboard/datos/consultas.py":   { url: app + "datos/consultas.py" },
+            "dashboard/datos/precios_en_vivo.py": { url: app + "datos/precios_en_vivo.py" },
+            "dashboard/paginas/__init__.py":  { url: app + "paginas/__init__.py" },
+            "dashboard/paginas/patrimonio.py":   { url: app + "paginas/patrimonio.py" },
+            "dashboard/paginas/distribucion.py": { url: app + "paginas/distribucion.py" },
+            "dashboard/paginas/sistema.py":   { url: app + "paginas/sistema.py" },
+            "db/cartera.db":                  { url: dbUrl },
+          },
+        },
+        $("root")
+      );
+      // El .then() de mount resuelve antes de que Streamlit pinte el primer
+      // render, asi que ocultamos la capa de carga cuando aparece contenido real.
+      const iv = setInterval(() => {
+        if ($("root").innerText.includes("Patrimonio total")) {
+          $("cargando").style.display = "none";
+          clearInterval(iv);
+        }
+      }, 300);
+    }
+
+    $("form-login").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const pwd = $("pwd").value;
+      $("err").textContent = "";
+      $("btn").disabled = true;
+      $("btn").textContent = "Descifrando…";
+      try {
+        const dbUrl = await descifrarDB(pwd);
+        arrancarApp(dbUrl);
+      } catch (err) {
+        $("err").textContent = "Contrasena incorrecta.";
+        $("btn").disabled = false;
+        $("btn").textContent = "Entrar";
+      }
+    });
+  </script>
+</body>
+</html>
