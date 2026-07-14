@@ -568,9 +568,8 @@ def _rv_acciones_carteras():
     for clave in ORDEN_ESTRATEGIAS:
         if clave not in datos:
             continue
-        valor, carne_pct, sectores = datos[clave]
+        valor, _carne_pct, sectores = datos[clave]
         label = ESTRATEGIA_LABEL.get(clave, clave.title())
-        color_pct = '#0ECB81' if carne_pct >= 0 else '#F6465D'
         barras = ''.join(
             f"<div style='display:flex;align-items:center;gap:6px;margin-bottom:3px;'>"
             f"<span style='color:#848E9C;font-size:11px;width:88px;flex-shrink:0;"
@@ -585,11 +584,11 @@ def _rv_acciones_carteras():
         html = (
             f"<div style='background:#1E2329;border-radius:8px;padding:12px 14px;"
             f"margin-bottom:8px;'>"
-            f"<div style='display:flex;justify-content:space-between;align-items:baseline;'>"
+            f"<div style='display:flex;justify-content:space-between;align-items:baseline;"
+            f"margin-bottom:8px;'>"
             f"<span style='color:#EAECEF;font-size:14px;font-weight:700;'>{label}</span>"
             f"<span style='color:#EAECEF;font-size:15px;font-weight:700;'>"
             f"{formato_eur(valor)} &#8364;</span></div>"
-            f"<p style='color:{color_pct};font-size:12px;margin:0 0 8px;'>{carne_pct:+.1f}%</p>"
             f"{barras}</div>"
         )
         if fila_clicable(html, key=f"rv_cartera_{clave}"):
