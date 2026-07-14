@@ -575,20 +575,24 @@ def rv_acciones_detalle(estrategia):
     cond = "estrategia IS NULL" if estrategia == 'SIN_ESTRATEGIA' else "estrategia = ?"
     params = () if estrategia == 'SIN_ESTRATEGIA' else (estrategia,)
     resultado = []
-    for tk, nombre, fecha_adq, coste_eur, valor_eur, carne, leche in c.execute(
-            f"SELECT ticker, nombre, fecha_adq, coste_eur, valor_eur, carne, leche "
-            f"FROM metricas_acciones WHERE {cond}", params):
+    for (tk, nombre, divisa, fecha_adq, coste_orig, valor_venta,
+         coste_eur, valor_eur, carne, leche) in c.execute(
+            f"SELECT ticker, nombre, divisa, fecha_adq, coste_orig, valor_venta, "
+            f"coste_eur, valor_eur, carne, leche FROM metricas_acciones WHERE {cond}", params):
         resultado.append({
             'ticker': tk,
             'nombre': nombre,
+            'divisa': divisa,
             'fecha_adquisicion': fecha_adq,
-            'coste': coste_eur or 0.0,
-            'valor': valor_eur or 0.0,
+            'coste': coste_orig or 0.0,        # valor de adquisicion en divisa original (como el Excel)
+            'valor': valor_venta or 0.0,       # valor de venta en divisa original (como CarneLeche)
+            'coste_eur': coste_eur or 0.0,     # para el total y el orden
+            'valor_eur': valor_eur or 0.0,
             'carne_pct': round((carne or 0.0) * 100, 1),
             'leche_pct': round((leche or 0.0) * 100, 1),
         })
     conn.close()
-    return sorted(resultado, key=lambda x: -x['valor'])
+    return sorted(resultado, key=lambda x: -x['valor_eur'])
 
 
 def rv_lista_vehiculo(vehiculo):

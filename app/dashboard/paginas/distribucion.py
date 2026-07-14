@@ -626,7 +626,7 @@ def _rv_acciones_detalle_vista():
 
         datos = [d for d in datos if _coincide(d)]
 
-    total_valor = sum(d['valor'] for d in datos)
+    total_valor = sum(d['valor_eur'] for d in datos)
     st.markdown(
         f"<p style='color:#848E9C;font-size:12px;margin:6px 0 10px;'>"
         f"{len(datos)} posiciones &middot; {formato_eur(total_valor)} &#8364;</p>",
@@ -638,15 +638,15 @@ def _rv_acciones_detalle_vista():
     # activa) y volver a pulsar la misma alterna ascendente/descendente.
     COLUMNAS_TABLA = [
         ('Ticker', 'ticker', 1.3, 'text'),
-        ('Adquis.', 'fecha_adquisicion', 0.9, 'text'),
-        ('Coste', 'coste', 0.9, 'num'),
-        ('Valor', 'valor', 1.0, 'num'),
+        ('Fecha', 'fecha_adquisicion', 0.9, 'text'),
+        ('Coste', 'coste_eur', 1.0, 'num'),
+        ('Valor', 'valor_eur', 1.0, 'num'),
         ('Carne', 'carne_pct', 0.8, 'num'),
         ('Leche', 'leche_pct', 0.8, 'num'),
     ]
 
     if 'rv_orden_campo' not in st.session_state:
-        st.session_state.rv_orden_campo = 'valor'
+        st.session_state.rv_orden_campo = 'valor_eur'
     if 'rv_orden_asc' not in st.session_state:
         st.session_state.rv_orden_asc = False
 
@@ -659,7 +659,8 @@ def _rv_acciones_detalle_vista():
                     flecha = ' ▲' if st.session_state.rv_orden_asc else ' ▼'
                 else:
                     flecha = ''
-                if st.button(f"{etiqueta}{flecha}", key=f"rv_orden_col_{campo_col}"):
+                if st.button(f"{etiqueta}{flecha}", key=f"rv_orden_col_{campo_col}",
+                             use_container_width=True):
                     if es_activa:
                         st.session_state.rv_orden_asc = not st.session_state.rv_orden_asc
                     else:
@@ -677,24 +678,28 @@ def _rv_acciones_detalle_vista():
 
     datos.sort(key=_clave_orden, reverse=not st.session_state.rv_orden_asc)
 
+    # Simbolo de divisa para mostrar coste/valor en divisa original (como el Excel).
+    SIMBOLO = {'EUR': '&#8364;', 'USD': '$', 'GBP': '&#163;', 'GBX': '&#163;',
+               'CHF': 'CHF', 'DKK': 'kr', 'NOK': 'kr', 'SEK': 'kr', 'PLN': 'z&#322;'}
+    # Pesos identicos a los de la cabecera (COLUMNAS_TABLA) para que columnas y
+    # encabezados queden alineados; todo centrado para mejor lectura.
     filas = ""
     for d in datos:
         color_carne = '#0ECB81' if d['carne_pct'] >= 0 else '#F6465D'
         fecha = d['fecha_adquisicion'][:7] if d['fecha_adquisicion'] else 'N/D'
+        sym = SIMBOLO.get(d['divisa'], d['divisa'] or '')
         filas += (
-            f"<div style='display:flex;justify-content:space-between;padding:5px 0;"
-            f"border-bottom:1px solid #1E2329;'>"
-            f"<span style='color:#EAECEF;font-size:12px;font-weight:600;flex:1.3;'>"
-            f"{d['ticker']}</span>"
-            f"<span style='color:#848E9C;font-size:11px;width:68px;text-align:center;'>"
-            f"{fecha}</span>"
-            f"<span style='color:#848E9C;font-size:11px;width:68px;text-align:right;'>"
-            f"{formato_eur(d['coste'])}&#8364;</span>"
-            f"<span style='color:#EAECEF;font-size:11px;width:78px;text-align:right;'>"
-            f"{formato_eur(d['valor'])}&#8364;</span>"
-            f"<span style='color:{color_carne};font-size:11px;width:52px;text-align:right;"
+            "<div style='display:flex;padding:5px 0;border-bottom:1px solid #1E2329;'>"
+            f"<span style='flex:1.3;text-align:center;color:#EAECEF;font-size:12px;"
+            f"font-weight:600;'>{d['ticker']}</span>"
+            f"<span style='flex:0.9;text-align:center;color:#848E9C;font-size:11px;'>{fecha}</span>"
+            f"<span style='flex:1;text-align:center;color:#848E9C;font-size:11px;'>"
+            f"{formato_eur(d['coste'])} {sym}</span>"
+            f"<span style='flex:1;text-align:center;color:#EAECEF;font-size:11px;'>"
+            f"{formato_eur(d['valor'])} {sym}</span>"
+            f"<span style='flex:0.8;text-align:center;color:{color_carne};font-size:11px;"
             f"font-weight:600;'>{d['carne_pct']:+.1f}%</span>"
-            f"<span style='color:#F0B90B;font-size:11px;width:52px;text-align:right;'>"
+            f"<span style='flex:0.8;text-align:center;color:#F0B90B;font-size:11px;'>"
             f"{d['leche_pct']:.1f}%</span></div>"
         )
     st.markdown(filas, unsafe_allow_html=True)
