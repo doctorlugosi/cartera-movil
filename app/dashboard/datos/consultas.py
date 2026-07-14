@@ -538,29 +538,25 @@ def _dividendos_netos(c, activo_id):
 
 
 def rv_acciones_por_estrategia():
-    """Devuelve {estrategia: (valor_total, carne_pct_ponderado,
-    [(sector, valor, pct), ...])} para las acciones de RENTA_VARIABLE."""
+    """Devuelve {estrategia: (valor_total_eur, carne_pct, [(sector, valor, pct), ...])}.
+    LEE la tabla metricas_acciones (misma fuente que el Excel CarneLeche): CARNE es
+    la rentabilidad real neta (IPC+IRPF) sobre el coste actualizado por IPC."""
     conn = conectar()
     c = conn.cursor()
-    activos = c.execute("""
-        SELECT id, estrategia, sector FROM activos
-        WHERE activo=1 AND pilar='RENTA_VARIABLE' AND vehiculo='ACCION'
-    """).fetchall()
-
-    por_estrategia = {}
-    for activo_id, estrategia, sector in activos:
-        clave = estrategia or 'SIN_ESTRATEGIA'
-        valor = valor_actual_activo(c, activo_id) or 0.0
-        coste = _coste_activo(c, activo_id)
-        d = por_estrategia.setdefault(clave, {'valor': 0.0, 'coste': 0.0, 'sectores': {}})
-        d['valor'] += valor
-        d['coste'] += coste
+    por = {}
+    for estr, sector, valor_eur, coste_ipc_eur, rent_neta_eur in c.execute(
+            "SELECT estrategia, sector, valor_eur, coste_ipc_eur, rent_neta_eur FROM metricas_acciones"):
+        clave = estr or 'SIN_ESTRATEGIA'
+        d = por.setdefault(clave, {'valor': 0.0, 'coste_ipc': 0.0, 'rent': 0.0, 'sectores': {}})
+        d['valor'] += valor_eur or 0.0
+        d['coste_ipc'] += coste_ipc_eur or 0.0
+        d['rent'] += rent_neta_eur or 0.0
         sec = sector or 'Otros'
-        d['sectores'][sec] = d['sectores'].get(sec, 0.0) + valor
+        d['sectores'][sec] = d['sectores'].get(sec, 0.0) + (valor_eur or 0.0)
 
     resultado = {}
-    for clave, d in por_estrategia.items():
-        carne_pct = round((d['valor'] - d['coste']) / d['coste'] * 100, 1) if d['coste'] > 0 else 0.0
+    for clave, d in por.items():
+        carne_pct = round(d['rent'] / d['coste_ipc'] * 100, 1) if d['coste_ipc'] > 0 else 0.0
         sectores = sorted(
             [(sec, val, round(val / d['valor'] * 100, 1) if d['valor'] > 0 else 0)
              for sec, val in d['sectores'].items()],
@@ -572,39 +568,24 @@ def rv_acciones_por_estrategia():
 
 
 def rv_acciones_detalle(estrategia):
-    """Lista de acciones de una estrategia con coste, valor, Carne% y Leche%."""
+    """Lista de acciones de una estrategia con coste, valor, Carne% y Leche%.
+    LEE la tabla metricas_acciones (misma fuente que el Excel CarneLeche)."""
     conn = conectar()
     c = conn.cursor()
-    if estrategia == 'SIN_ESTRATEGIA':
-        activos = c.execute("""
-            SELECT id, nombre, ticker FROM activos
-            WHERE activo=1 AND pilar='RENTA_VARIABLE' AND vehiculo='ACCION'
-                  AND estrategia IS NULL
-        """).fetchall()
-    else:
-        activos = c.execute("""
-            SELECT id, nombre, ticker FROM activos
-            WHERE activo=1 AND pilar='RENTA_VARIABLE' AND vehiculo='ACCION'
-                  AND estrategia=?
-        """, (estrategia,)).fetchall()
-
+    cond = "estrategia IS NULL" if estrategia == 'SIN_ESTRATEGIA' else "estrategia = ?"
+    params = () if estrategia == 'SIN_ESTRATEGIA' else (estrategia,)
     resultado = []
-    for activo_id, nombre, ticker in activos:
-        valor = valor_actual_activo(c, activo_id) or 0.0
-        coste = _coste_activo(c, activo_id)
-        if coste <= 0.0001 and valor <= 0.0001:
-            continue
-        dividendos = _dividendos_netos(c, activo_id)
-        carne_pct = round((valor - coste) / coste * 100, 1) if coste > 0 else 0.0
-        leche_pct = round(dividendos / coste * 100, 1) if coste > 0 else 0.0
+    for tk, nombre, fecha_adq, coste_eur, valor_eur, carne, leche in c.execute(
+            f"SELECT ticker, nombre, fecha_adq, coste_eur, valor_eur, carne, leche "
+            f"FROM metricas_acciones WHERE {cond}", params):
         resultado.append({
-            'ticker': ticker or nombre.split(' - ')[-1],
+            'ticker': tk,
             'nombre': nombre,
-            'fecha_adquisicion': _fecha_adquisicion(c, activo_id),
-            'coste': coste,
-            'valor': valor,
-            'carne_pct': carne_pct,
-            'leche_pct': leche_pct,
+            'fecha_adquisicion': fecha_adq,
+            'coste': coste_eur or 0.0,
+            'valor': valor_eur or 0.0,
+            'carne_pct': round((carne or 0.0) * 100, 1),
+            'leche_pct': round((leche or 0.0) * 100, 1),
         })
     conn.close()
     return sorted(resultado, key=lambda x: -x['valor'])
