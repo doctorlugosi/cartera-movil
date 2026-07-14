@@ -686,7 +686,8 @@ def _rv_acciones_detalle_vista():
     filas = ""
     for d in datos:
         color_carne = '#0ECB81' if d['carne_pct'] >= 0 else '#F6465D'
-        fecha = d['fecha_adquisicion'][:7] if d['fecha_adquisicion'] else 'N/D'
+        fa = d['fecha_adquisicion']
+        fecha = f"{fa[5:7]}/{fa[0:4]}" if fa else 'N/D'  # MM/YYYY
         sym = SIMBOLO.get(d['divisa'], d['divisa'] or '')
         filas += (
             "<div style='display:flex;padding:5px 0;border-bottom:1px solid #1E2329;'>"
