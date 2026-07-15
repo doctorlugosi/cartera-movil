@@ -994,7 +994,12 @@ def mostrar():
         nombre_completo = NOMBRES_COMPLETOS.get(pilar_sel, pilar_sel)
 
         if pilar_sel == 'RENTA_VARIABLE':
-            titulo_panel = f"{nombre_completo} &mdash; Por vehiculo"
+            sufijo_rv = {'ACCION': 'Acciones', 'ETF': 'ETFs',
+                         'FONDOS': 'Fondos y Carteras'}.get(st.session_state.get('rv_vista'))
+            if sufijo_rv:
+                titulo_panel = f"Renta Variable - {sufijo_rv}"
+            else:
+                titulo_panel = f"{nombre_completo} &mdash; Por vehiculo"
         else:
             titulo_panel = f"{nombre_completo} &mdash; Detalle"
         icono_panel = ICONOS_PILAR.get(pilar_sel, 'category')
