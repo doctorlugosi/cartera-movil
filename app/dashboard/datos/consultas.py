@@ -501,10 +501,11 @@ def distribucion_rv_por_vehiculo():
         if valor is None:
             continue
         por_vehiculo[clave] = por_vehiculo.get(clave, 0.0) + valor
+    # El % de cada vehiculo es respecto al TOTAL del pilar Renta Variable (en EUR),
+    # no respecto a todo el patrimonio.
     total = sum(por_vehiculo.values())
-    total_patrimonio, _ = patrimonio_total()
     resultado = {
-        k: (v, round(v / total_patrimonio * 100, 1) if total_patrimonio > 0 else 0)
+        k: (v, round(v / total * 100, 1) if total > 0 else 0)
         for k, v in por_vehiculo.items()
     }
     conn.close()
