@@ -602,16 +602,25 @@ def _rv_acciones_detalle_vista():
 
     datos = consultas.rv_acciones_detalle(estrategia)
 
+    total_valor = sum(d['valor_eur'] for d in datos)
+    # Cabecera: titulo de la cartera (izq) y posiciones + valor (der) en la MISMA fila
     st.markdown(
-        f"<p style='color:#EAECEF;font-size:16px;font-weight:700;margin:0 0 2px;"
-        f"text-align:right;'>{label}</p>",
+        f"<div style='display:flex;justify-content:space-between;align-items:baseline;"
+        f"margin:0 0 8px;'>"
+        f"<span style='color:#EAECEF;font-size:16px;font-weight:700;'>{label}</span>"
+        f"<span style='color:#848E9C;font-size:12px;'>{len(datos)} posiciones &middot; "
+        f"<span style='color:#EAECEF;font-size:15px;font-weight:700;'>"
+        f"{formato_eur(total_valor)} &#8364;</span></span>"
+        f"</div>",
         unsafe_allow_html=True
     )
 
-    filtro = st.text_input(
-        "Filtrar", key="rv_filtro_acciones", placeholder="Buscar en cualquier columna...",
-        label_visibility="collapsed"
-    )
+    col_filtro, _ = st.columns([2, 3])
+    with col_filtro:
+        filtro = st.text_input(
+            "Filtrar", key="rv_filtro_acciones", placeholder="Buscar...",
+            label_visibility="collapsed"
+        )
 
     if filtro:
         q = filtro.upper()
@@ -625,15 +634,6 @@ def _rv_acciones_detalle_vista():
             return any(q in t.upper() for t in textos)
 
         datos = [d for d in datos if _coincide(d)]
-
-    total_valor = sum(d['valor_eur'] for d in datos)
-    st.markdown(
-        f"<p style='color:#848E9C;font-size:12px;margin:6px 0 10px;text-align:right;'>"
-        f"{len(datos)} posiciones &middot; "
-        f"<span style='color:#EAECEF;font-size:15px;font-weight:700;'>"
-        f"{formato_eur(total_valor)} &#8364;</span></p>",
-        unsafe_allow_html=True
-    )
 
     # Cabecera de tabla tipo hoja de calculo: cada columna es un boton, pulsar
     # ordena por esa columna (con una flecha indicando la columna/direccion
