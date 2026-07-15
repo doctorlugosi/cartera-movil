@@ -628,7 +628,9 @@ def _rv_acciones_detalle_vista():
     total_valor = sum(d['valor_eur'] for d in datos)
     st.markdown(
         f"<p style='color:#848E9C;font-size:12px;margin:6px 0 10px;'>"
-        f"{len(datos)} posiciones &middot; {formato_eur(total_valor)} &#8364;</p>",
+        f"{len(datos)} posiciones &middot; "
+        f"<span style='color:#EAECEF;font-size:15px;font-weight:700;'>"
+        f"{formato_eur(total_valor)} &#8364;</span></p>",
         unsafe_allow_html=True
     )
 
