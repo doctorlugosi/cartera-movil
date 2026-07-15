@@ -565,10 +565,12 @@ def _rv_tiles():
 
 def _rv_acciones_carteras():
     datos = consultas.rv_acciones_por_estrategia()
+    total_acc = sum(v[0] for v in datos.values())  # valor total de acciones (EUR)
     for clave in ORDEN_ESTRATEGIAS:
         if clave not in datos:
             continue
         valor, _carne_pct, sectores = datos[clave]
+        pct_cartera = round(valor / total_acc * 100, 1) if total_acc else 0.0
         label = ESTRATEGIA_LABEL.get(clave, clave.title())
         barras = ''.join(
             f"<div style='display:flex;align-items:center;gap:6px;margin-bottom:3px;'>"
@@ -588,7 +590,7 @@ def _rv_acciones_carteras():
             f"margin-bottom:8px;'>"
             f"<span style='color:#EAECEF;font-size:14px;font-weight:700;'>{label}</span>"
             f"<span style='color:#EAECEF;font-size:15px;font-weight:700;'>"
-            f"{formato_eur(valor)} &#8364;</span></div>"
+            f"{pct_cartera:.1f}%</span></div>"
             f"{barras}</div>"
         )
         if fila_clicable(html, key=f"rv_cartera_{clave}"):
