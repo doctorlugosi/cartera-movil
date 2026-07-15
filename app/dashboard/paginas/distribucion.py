@@ -846,8 +846,16 @@ def _rv_lista_vehiculo_vista(vehiculo):
         )
         return
 
+    SIMBOLO = {'EUR': '&#8364;', 'USD': '$', 'GBP': '&#163;', 'GBX': '&#163;',
+               'CHF': 'CHF', 'DKK': 'kr', 'NOK': 'kr', 'SEK': 'kr', 'PLN': 'z&#322;'}
     for d in datos:
-        color_carne = '#0ECB81' if d['carne_pct'] >= 0 else '#F6465D'
+        sym = SIMBOLO.get(d['divisa'], d['divisa'] or '')
+        rent = d['carne_pct']
+        if rent is None:
+            color_carne, rent_txt = '#848E9C', '&mdash;'
+        else:
+            color_carne = '#0ECB81' if rent >= 0 else '#F6465D'
+            rent_txt = f"{rent:+.1f}%"
         composicion_cap = d['composicion'].capitalize() if d['composicion'] else None
         sub = ' &middot; '.join(x for x in [composicion_cap, d['geografia']] if x)
         html = (
@@ -856,11 +864,11 @@ def _rv_lista_vehiculo_vista(vehiculo):
             f"<span style='color:#EAECEF;font-size:13px;font-weight:600;'>"
             f"{d['nombre'].split(' - ')[-1]}</span>"
             f"<span style='color:#EAECEF;font-size:13px;font-weight:700;'>"
-            f"{formato_eur(d['valor'])} &#8364;</span></div>"
+            f"{formato_eur(d['valor'])} {sym}</span></div>"
             f"<div style='display:flex;justify-content:space-between;margin-top:1px;'>"
             f"<span style='color:#848E9C;font-size:11px;'>{sub}</span>"
             f"<span style='color:{color_carne};font-size:11px;font-weight:600;'>"
-            f"{d['carne_pct']:+.1f}%</span></div></div>"
+            f"{rent_txt}</span></div></div>"
         )
         if fila_clicable(html, key=f"rv_item_{vehiculo}_{d['id']}"):
             st.session_state.rv_activo_sel = d['id']

@@ -596,39 +596,31 @@ def rv_acciones_detalle(estrategia):
 
 
 def rv_lista_vehiculo(vehiculo):
-    """Lista de ETFs o Fondos/Carteras con coste, valor y Carne%.
-    vehiculo: 'ETF' o 'FONDOS' (agrupa FONDO+CARTERA)."""
+    """Lista de ETFs o Fondos/Carteras con valor actual (en divisa original) y
+    rentabilidad. LEE la tabla metricas_etf (calculada en la cadena por
+    calcular_metricas.py). vehiculo: 'ETF' o 'FONDOS' (agrupa FONDO+CARTERA)."""
     conn = conectar()
     c = conn.cursor()
-    if vehiculo == 'FONDOS':
-        activos = c.execute("""
-            SELECT id, nombre, composicion, geografia FROM activos
-            WHERE activo=1 AND pilar='RENTA_VARIABLE' AND vehiculo IN ('FONDO', 'CARTERA')
-        """).fetchall()
-    else:
-        activos = c.execute("""
-            SELECT id, nombre, composicion, geografia FROM activos
-            WHERE activo=1 AND pilar='RENTA_VARIABLE' AND vehiculo=?
-        """, (vehiculo,)).fetchall()
-
+    cond = "vehiculo IN ('FONDO','CARTERA')" if vehiculo == 'FONDOS' else "vehiculo = ?"
+    params = () if vehiculo == 'FONDOS' else (vehiculo,)
     resultado = []
-    for activo_id, nombre, composicion, geografia in activos:
-        valor = valor_actual_activo(c, activo_id) or 0.0
-        coste = _coste_activo(c, activo_id)
-        if coste <= 0.0001 and valor <= 0.0001:
-            continue
-        carne_pct = round((valor - coste) / coste * 100, 1) if coste > 0 else 0.0
+    for (aid, nombre, divisa, composicion, geografia, fecha_adq,
+         valor_orig, valor_eur, rentab_pct) in c.execute(
+            f"SELECT id, nombre, divisa, composicion, geografia, fecha_adq, "
+            f"valor_orig, valor_eur, rentab_pct FROM metricas_etf WHERE {cond}", params):
         resultado.append({
-            'id': activo_id,
+            'id': aid,
             'nombre': nombre,
+            'divisa': divisa,
             'composicion': composicion,
             'geografia': geografia,
-            'fecha_adquisicion': _fecha_adquisicion(c, activo_id),
-            'valor': valor,
-            'carne_pct': carne_pct,
+            'fecha_adquisicion': fecha_adq,
+            'valor': valor_orig or 0.0,      # valor actual en divisa original
+            'valor_eur': valor_eur or 0.0,
+            'carne_pct': rentab_pct,         # None si no hay base (rentab. no calculable)
         })
     conn.close()
-    return sorted(resultado, key=lambda x: -x['valor'])
+    return sorted(resultado, key=lambda x: -(x['valor_eur'] or 0.0))
 
 
 def historico_valoraciones_activo(activo_id, dias=365):
