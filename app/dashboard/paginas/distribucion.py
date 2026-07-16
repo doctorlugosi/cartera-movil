@@ -869,10 +869,17 @@ def _rv_lista_vehiculo_vista(vehiculo):
 
     for grupo in orden_grupos:
         if grupo:
+            # % del grupo (Regiones / Tematicas) sobre el total de la lista
+            val_grupo = sum((d['valor_eur'] or 0.0) for d in grupos[grupo])
+            pct_grupo = (val_grupo / total_lista * 100) if total_lista else 0.0
             st.markdown(
-                f"<p style='color:#F0B90B;font-size:11px;font-weight:700;"
-                f"text-transform:uppercase;letter-spacing:0.6px;margin:10px 0 2px;'>"
-                f"{ETIQ_EXP.get(grupo, grupo)}</p>",
+                f"<div style='display:flex;justify-content:space-between;align-items:baseline;"
+                f"margin:10px 0 2px;'>"
+                f"<span style='color:#F0B90B;font-size:11px;font-weight:700;"
+                f"text-transform:uppercase;letter-spacing:0.6px;'>"
+                f"{ETIQ_EXP.get(grupo, grupo)}</span>"
+                f"<span style='color:#F0B90B;font-size:11px;font-weight:700;'>"
+                f"{pct_grupo:.1f}%</span></div>",
                 unsafe_allow_html=True
             )
         for d in grupos[grupo]:
@@ -888,8 +895,6 @@ def _rv_lista_vehiculo_vista(vehiculo):
             else:
                 composicion_cap = d['composicion'].capitalize() if d['composicion'] else None
                 sub = ' &middot; '.join(x for x in [composicion_cap, d['geografia']] if x)
-            pct_total = ((d['valor_eur'] or 0.0) / total_lista * 100) if total_lista else 0.0
-            sub = f"{sub} &middot; {pct_total:.1f}%" if sub else f"{pct_total:.1f}%"
             html = (
                 f"<div style='background:transparent;border-radius:6px;padding:8px 10px;margin-bottom:4px;'>"
                 f"<div style='display:flex;justify-content:space-between;'>"
