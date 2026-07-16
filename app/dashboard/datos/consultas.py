@@ -596,6 +596,18 @@ def rv_acciones_detalle(estrategia):
     return sorted(resultado, key=lambda x: -x['valor_eur'])
 
 
+def inv_alt_metricas():
+    """{activo_id: {'tipo', 'valor_eur', 'pct'}} desde la tabla metricas_inv_alt
+    (calculada en la cadena por calcular_metricas.py). El % es el peso de cada
+    activo sobre el total del pilar Inversiones Alternativas."""
+    conn = conectar()
+    c = conn.cursor()
+    res = {r[0]: {'tipo': r[1], 'valor_eur': r[2], 'pct': r[3]}
+           for r in c.execute("SELECT id, tipo, valor_eur, pct FROM metricas_inv_alt")}
+    conn.close()
+    return res
+
+
 def rv_lista_vehiculo(vehiculo):
     """Lista de ETFs o Fondos/Carteras con valor actual (en divisa original) y
     rentabilidad. LEE la tabla metricas_etf (calculada en la cadena por

@@ -450,19 +450,24 @@ def panel_inv_alternativas(detalle):
 
     st.markdown(encabezado_columnas([
         ('Activo', 'flex:1;', 'left'),
-        ('Tipo', 'width:80px;', 'center'),
+        ('Tipo', 'width:130px;', 'center'),
         ('Valor', 'width:90px;', 'right'),
     ]), unsafe_allow_html=True)
+    # El % de cada activo sobre el total del pilar viene precalculado en metricas.
+    met_alt = consultas.inv_alt_metricas()
     for row in detalle:
         nombre, broker, divisa, composicion, sector, geografia, vehiculo, ticker, *_, activo_id, valor, cantidad = row
         nombre_corto = nombre.replace(f"{broker} - ", "")
         tipo = (composicion or sector or 'N/D').capitalize()
+        m = met_alt.get(activo_id)
+        pct_txt = (f" <span style='color:#F0B90B;font-weight:600;'>{m['pct']:.1f}%</span>"
+                   if m and m['pct'] is not None else '')
         html = (
             f"<div style='display:flex;justify-content:space-between;"
             f"padding:5px 0;border-bottom:1px solid #1E2329;'>"
             f"<span style='color:#EAECEF;font-size:14px;flex:1;'>{nombre_corto}</span>"
-            f"<span style='color:#848E9C;font-size:14px;width:80px;text-align:center;'>"
-            f"{tipo}</span>"
+            f"<span style='color:#848E9C;font-size:14px;width:130px;text-align:center;'>"
+            f"{tipo}{pct_txt}</span>"
             f"<span style='color:#F0B90B;font-size:14px;font-weight:600;width:90px;"
             f"text-align:right;'>{formato_eur(valor)} &#8364;</span></div>"
         )
