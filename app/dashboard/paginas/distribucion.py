@@ -460,7 +460,7 @@ def panel_inv_alternativas(detalle):
         nombre_corto = nombre.replace(f"{broker} - ", "")
         tipo = (composicion or sector or 'N/D').capitalize()
         m = met_alt.get(activo_id)
-        pct_txt = (f" <span style='color:#F0B90B;font-size:11px;font-weight:600;'>"
+        pct_txt = (f" <span style='color:#F0B90B;font-size:12px;font-weight:600;'>"
                    f"{m['pct']:.1f}%</span>"
                    if m and m['pct'] is not None else '')
         html = (
