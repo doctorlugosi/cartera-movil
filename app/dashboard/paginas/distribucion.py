@@ -124,7 +124,7 @@ def panel_liquidez(detalle):
             f"padding:5px 0;border-bottom:1px solid #1E2329;'>"
             f"<span style='color:#EAECEF;font-size:14px;flex:1;'>{broker}</span>"
             f"<span style='color:#848E9C;font-size:14px;width:70px;text-align:center;'>{divisa}</span>"
-            f"<span style='color:#F0B90B;font-size:14px;font-weight:600;width:90px;"
+            f"<span style='color:#EAECEF;font-size:14px;font-weight:600;width:90px;"
             f"text-align:right;'>{formato_eur(valor)} &#8364;</span></div>",
             unsafe_allow_html=True
         )
@@ -151,7 +151,7 @@ def panel_materias_primas(detalle):
             f"<span style='color:#EAECEF;font-size:14px;'>{nombre_corto}</span></span>"
             f"<span style='color:#848E9C;font-size:14px;width:80px;text-align:center;'>"
             f"{cantidad:.3f} kg</span>"
-            f"<span style='color:#F0B90B;font-size:14px;font-weight:600;width:90px;"
+            f"<span style='color:#EAECEF;font-size:14px;font-weight:600;width:90px;"
             f"text-align:right;'>{formato_eur(valor)} &#8364;</span></div>",
             unsafe_allow_html=True
         )
@@ -222,7 +222,7 @@ def panel_criptoactivos(detalle):
             f"<span style='color:#EAECEF;font-size:14px;flex:1;'>{d['nombre']}</span>"
             f"<span style='color:#848E9C;font-size:14px;width:100px;text-align:center;'>"
             f"{d['cantidad']:.4f}</span>"
-            f"<span style='color:#F0B90B;font-size:14px;font-weight:600;width:90px;"
+            f"<span style='color:#EAECEF;font-size:14px;font-weight:600;width:90px;"
             f"text-align:right;'>{formato_eur(d['valor'])} &#8364;</span></div>",
             unsafe_allow_html=True
         )
@@ -277,7 +277,7 @@ def panel_renta_fija(detalle):
             f"{sector or 'N/D'}</span>"
             f"<span style='color:#848E9C;font-size:14px;width:70px;text-align:center;'>"
             f"{geografia or 'N/D'}</span>"
-            f"<span style='color:#F0B90B;font-size:14px;font-weight:600;width:90px;"
+            f"<span style='color:#EAECEF;font-size:14px;font-weight:600;width:90px;"
             f"text-align:right;'>{formato_eur(valor)} &#8364;</span></div>",
             unsafe_allow_html=True
         )
@@ -460,7 +460,8 @@ def panel_inv_alternativas(detalle):
         nombre_corto = nombre.replace(f"{broker} - ", "")
         tipo = (composicion or sector or 'N/D').capitalize()
         m = met_alt.get(activo_id)
-        pct_txt = (f" <span style='color:#F0B90B;font-weight:600;'>{m['pct']:.1f}%</span>"
+        pct_txt = (f" <span style='color:#F0B90B;font-size:11px;font-weight:600;'>"
+                   f"{m['pct']:.1f}%</span>"
                    if m and m['pct'] is not None else '')
         html = (
             f"<div style='display:flex;justify-content:space-between;"
@@ -468,7 +469,7 @@ def panel_inv_alternativas(detalle):
             f"<span style='color:#EAECEF;font-size:14px;flex:1;'>{nombre_corto}</span>"
             f"<span style='color:#848E9C;font-size:14px;width:130px;text-align:center;'>"
             f"{tipo}{pct_txt}</span>"
-            f"<span style='color:#F0B90B;font-size:14px;font-weight:600;width:90px;"
+            f"<span style='color:#EAECEF;font-size:14px;font-weight:600;width:90px;"
             f"text-align:right;'>{formato_eur(valor)} &#8364;</span></div>"
         )
         if fila_clicable(html, key=f"inv_alt_{activo_id}"):
@@ -491,7 +492,7 @@ def panel_negocios(detalle):
             f"<span style='color:#EAECEF;font-size:14px;flex:1;'>{nombre_corto}</span>"
             f"<span style='color:#848E9C;font-size:14px;width:100px;text-align:center;'>"
             f"{sector or 'N/D'}</span>"
-            f"<span style='color:#F0B90B;font-size:14px;font-weight:600;width:90px;"
+            f"<span style='color:#EAECEF;font-size:14px;font-weight:600;width:90px;"
             f"text-align:right;'>{formato_eur(valor)} &#8364;</span></div>",
             unsafe_allow_html=True
         )
@@ -515,7 +516,7 @@ def panel_inmobiliario(detalle):
             f"<span style='color:#EAECEF;font-size:14px;flex:1;'>{municipio or 'N/D'}</span>"
             f"<span style='color:#848E9C;font-size:14px;width:110px;text-align:center;'>"
             f"{destino_txt}</span>"
-            f"<span style='color:#F0B90B;font-size:14px;font-weight:600;width:90px;"
+            f"<span style='color:#EAECEF;font-size:14px;font-weight:600;width:90px;"
             f"text-align:right;'>{formato_eur(valor)} &#8364;</span></div>",
             unsafe_allow_html=True
         )
