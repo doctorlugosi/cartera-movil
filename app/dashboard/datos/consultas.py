@@ -605,16 +605,19 @@ def rv_lista_vehiculo(vehiculo):
     cond = "vehiculo IN ('FONDO','CARTERA')" if vehiculo == 'FONDOS' else "vehiculo = ?"
     params = () if vehiculo == 'FONDOS' else (vehiculo,)
     resultado = []
-    for (aid, nombre, divisa, composicion, geografia, fecha_adq,
-         valor_orig, valor_eur, rentab_pct) in c.execute(
-            f"SELECT id, nombre, divisa, composicion, geografia, fecha_adq, "
-            f"valor_orig, valor_eur, rentab_pct FROM metricas_etf WHERE {cond}", params):
+    for (aid, nombre, divisa, composicion, geografia, exposicion, exposicion_detalle,
+         fecha_adq, valor_orig, valor_eur, rentab_pct) in c.execute(
+            f"SELECT id, nombre, divisa, composicion, geografia, exposicion, "
+            f"exposicion_detalle, fecha_adq, valor_orig, valor_eur, rentab_pct "
+            f"FROM metricas_etf WHERE {cond}", params):
         resultado.append({
             'id': aid,
             'nombre': nombre,
             'divisa': divisa,
             'composicion': composicion,
             'geografia': geografia,
+            'exposicion': exposicion,
+            'exposicion_detalle': exposicion_detalle,
             'fecha_adquisicion': fecha_adq,
             'valor': valor_orig or 0.0,      # valor actual en divisa original
             'valor_eur': valor_eur or 0.0,
