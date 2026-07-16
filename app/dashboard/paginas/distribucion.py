@@ -855,6 +855,10 @@ def _rv_lista_vehiculo_vista(vehiculo):
                'CHF': 'CHF', 'DKK': 'kr', 'NOK': 'kr', 'SEK': 'kr', 'PLN': 'z&#322;'}
     ETIQ_EXP = {'Regiones': 'Regiones', 'Tematicas': 'Tem&aacute;ticas'}
 
+    # Peso de cada uno sobre el total de la lista (en EUR, para poder comparar
+    # instrumentos en distintas divisas).
+    total_lista = sum((d['valor_eur'] or 0.0) for d in datos)
+
     # Agrupar por exposicion (Regiones / Tematicas). Lo que no la tiene (fondos,
     # carteras) va sin cabecera de grupo.
     grupos = {}
@@ -884,6 +888,8 @@ def _rv_lista_vehiculo_vista(vehiculo):
             else:
                 composicion_cap = d['composicion'].capitalize() if d['composicion'] else None
                 sub = ' &middot; '.join(x for x in [composicion_cap, d['geografia']] if x)
+            pct_total = ((d['valor_eur'] or 0.0) / total_lista * 100) if total_lista else 0.0
+            sub = f"{sub} &middot; {pct_total:.1f}%" if sub else f"{pct_total:.1f}%"
             html = (
                 f"<div style='background:transparent;border-radius:6px;padding:8px 10px;margin-bottom:4px;'>"
                 f"<div style='display:flex;justify-content:space-between;'>"
