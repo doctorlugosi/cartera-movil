@@ -112,20 +112,23 @@ def historico_metal_api(metal):
 
 
 def panel_liquidez(detalle):
+    # Cada cuenta se muestra en su divisa nativa (eToro en USD); el patrimonio total y
+    # los % ya usan el valor convertido a EUR por detras.
+    SIMBOLO = {'EUR': '&#8364;', 'USD': 'US$', 'GBP': '&#163;', 'GBX': '&#163;', 'CHF': 'CHF'}
     st.markdown(encabezado_columnas([
         ('Plataforma', 'flex:1;', 'left'),
         ('Divisa', 'width:70px;', 'center'),
-        ('Valor', 'width:90px;', 'right'),
+        ('Valor', 'width:110px;', 'right'),
     ]), unsafe_allow_html=True)
-    for row in detalle:
-        nombre, broker, divisa, *_, valor, _ = row
+    for broker, divisa, valor_nativo, _valor_eur in consultas.liquidez_cuentas():
+        sym = SIMBOLO.get(divisa, divisa or '')
         st.markdown(
             f"<div style='display:flex;justify-content:space-between;"
             f"padding:5px 0;border-bottom:1px solid #1E2329;'>"
             f"<span style='color:#EAECEF;font-size:14px;flex:1;'>{broker}</span>"
             f"<span style='color:#848E9C;font-size:14px;width:70px;text-align:center;'>{divisa}</span>"
-            f"<span style='color:#EAECEF;font-size:14px;font-weight:600;width:90px;"
-            f"text-align:right;'>{formato_eur(valor)} &#8364;</span></div>",
+            f"<span style='color:#EAECEF;font-size:14px;font-weight:600;width:110px;"
+            f"text-align:right;'>{formato_eur(valor_nativo)} {sym}</span></div>",
             unsafe_allow_html=True
         )
 

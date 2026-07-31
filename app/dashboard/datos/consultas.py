@@ -14,6 +14,18 @@ def conectar():
     return sqlite3.connect(DB_PATH)
 
 
+def _a_eur(c, activo_id, valor):
+    """Convierte un importe en la divisa nativa del activo a EUR (para agregar).
+    tipo_cambio de divisas_fx: price_divisa = price_eur * tipo_cambio."""
+    divisa = c.execute("SELECT divisa FROM activos WHERE id=?", (activo_id,)).fetchone()[0]
+    if not divisa or divisa == 'EUR':
+        return valor
+    fila = c.execute(
+        "SELECT tipo_cambio FROM divisas_fx WHERE par=? ORDER BY fecha DESC LIMIT 1",
+        (f'{divisa}/EUR',)).fetchone()
+    return valor / fila[0] if fila and fila[0] else valor
+
+
 def valor_actual_activo(c, activo_id):
     """Devuelve el valor actual en EUR de un activo: ultimo precio conocido x cantidad,
     o el precio directamente si el activo no tiene cantidad real (ej. MyInvestor Robo,
@@ -32,8 +44,11 @@ def valor_actual_activo(c, activo_id):
     ''', (activo_id,)).fetchone()[0]
 
     if cantidad is None:
-        # Sin lotes en absoluto (liquidez, pensiones, MyInvestor Robo) -> el precio YA es el valor total
-        valor = precio
+        # Sin lotes en absoluto (liquidez, pensiones, MyInvestor Robo) -> el precio YA es
+        # el valor total, en la DIVISA NATIVA del activo (p.ej. la liquidez de eToro se
+        # mete en USD). Se convierte a EUR para agregar (el resto de valoraciones ya
+        # estan en EUR). Para EUR el factor es 1.
+        valor = _a_eur(c, activo_id, precio)
     else:
         # Tiene lotes reales (aunque la cantidad actual sea 0, ej. posicion
         # vendida por completo) -> el valor es precio x cantidad, nunca el
@@ -101,6 +116,24 @@ def distribucion_por_divisa():
 
     desglose = sorted(por_divisa.items(), key=lambda x: -x[1])
     return [(divisa, valor, valor / total * 100) for divisa, valor in desglose]
+
+
+def liquidez_cuentas():
+    """Cuentas de liquidez: (broker, divisa, valor_nativo, valor_eur). El nativo es el
+    saldo en su divisa (eToro en USD); el EUR es el convertido para el patrimonio."""
+    conn = conectar()
+    c = conn.cursor()
+    res = []
+    for aid, broker, divisa in c.execute(
+            "SELECT id, broker, divisa FROM activos WHERE tipo='LIQUIDEZ' AND activo=1").fetchall():
+        nat = c.execute(
+            "SELECT precio FROM valoraciones WHERE activo_id=? ORDER BY fecha DESC LIMIT 1",
+            (aid,)).fetchone()
+        if not nat:
+            continue
+        res.append((broker, divisa or 'EUR', nat[0], valor_actual_activo(c, aid) or 0.0))
+    conn.close()
+    return sorted(res, key=lambda x: -x[3])
 
 
 def efectivo_por_plataforma():
