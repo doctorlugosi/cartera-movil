@@ -86,35 +86,84 @@ def encabezado_columnas(columnas):
     )
 
 
-def historico_cripto_api(cripto_id):
+def historico_cripto_api(cripto_id, dias=180):
+    """Precio (USD) de los ultimos `dias` dias hasta HOY. Con dias>90 CoinGecko
+    devuelve granularidad diaria; se usan todos los puntos para una linea suave."""
     try:
         url = f"https://api.coingecko.com/api/v3/coins/{cripto_id}/market_chart"
-        r = requests.get(url, params={'vs_currency': 'usd', 'days': 365}, timeout=10)
+        r = requests.get(url, params={'vs_currency': 'usd', 'days': dias}, timeout=10)
         data = r.json()['prices']
-        fechas = [p[0] for p in data[::7]]
-        valores = [p[1] for p in data[::7]]
+        fechas = [p[0] for p in data]
+        valores = [p[1] for p in data]
         return fechas, valores
     except Exception:
         return [], []
 
 
-def historico_metal_api(metal):
-    # El plan actual de Metals.Dev solo permite consultar hasta 30 dias de
-    # historico (mas de eso devuelve 400 Bad Request).
+def historico_metal_api(metal, meses=6):
+    """Precio (USD/onza) de los ultimos `meses` meses via Yahoo Finance (yfinance),
+    en lugar de Metals.Dev, cuyo plan solo da 30 dias. Oro = GC=F, Plata = SI=F.
+    Devuelve (fechas_ms, valores) para dibujar igual que los graficos de cripto."""
+    TICKER = {'oro': 'GC=F', 'plata': 'SI=F'}
     try:
-        from datos.precios_en_vivo import historico_metal
-        datos = historico_metal(metal, dias=30)
-        fechas = [d[0] for d in datos]
-        valores = [d[1] for d in datos]
+        import yfinance as yf
+        cierres = yf.Ticker(TICKER[metal]).history(
+            period=f'{meses}mo', interval='1d')['Close'].dropna()
+        fechas = [int(ts.timestamp() * 1000) for ts in cierres.index]
+        valores = [float(v) for v in cierres.values]
         return fechas, valores
     except Exception:
         return [], []
+
+
+_MESES_ES = {1: 'Ene', 2: 'Feb', 3: 'Mar', 4: 'Abr', 5: 'May', 6: 'Jun',
+             7: 'Jul', 8: 'Ago', 9: 'Sep', 10: 'Oct', 11: 'Nov', 12: 'Dic'}
+
+
+def grafico_mini_precio(col, label, fechas_ms, valores, unidad='USD'):
+    """Mini-grafico de evolucion de precio (6 meses): linea amarilla con relleno,
+    eje Y ajustado al recorrido real de la serie (no al maximo) y un tick por mes
+    en espanol. Compartido por los graficos de cripto y de metales."""
+    from datetime import datetime
+    with col:
+        if not (fechas_ms and valores):
+            st.markdown(f"<p style='color:#333;font-size:12px;'>{label}: sin datos</p>",
+                        unsafe_allow_html=True)
+            return
+        dts = [datetime.fromtimestamp(f / 1000) for f in fechas_ms]
+        tickvals, ticktext, visto = [], [], set()
+        for dt in dts:
+            clave = (dt.year, dt.month)
+            if clave not in visto:
+                visto.add(clave)
+                tickvals.append(dt)
+                ticktext.append(_MESES_ES[dt.month])
+        lo, hi = min(valores), max(valores)
+        pad = (hi - lo) * 0.12 or hi * 0.02
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(
+            x=dts, y=valores,
+            line=dict(color='#F0B90B', width=1.8, shape='spline', smoothing=0.5),
+            fill='tozeroy', fillcolor='rgba(240,185,11,0.10)',
+            mode='lines', showlegend=False,
+            hovertemplate='%{x|%d %b}: %{y:,.0f} ' + unidad + '<extra></extra>',
+        ))
+        fig.update_layout(
+            title=dict(text=label, font=dict(color='#848E9C', size=11)),
+            paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
+            margin=dict(l=0, r=0, t=24, b=0), height=120,
+            xaxis=dict(showgrid=False, color='#848E9C', tickfont=dict(size=9),
+                       tickvals=tickvals, ticktext=ticktext, fixedrange=True),
+            yaxis=dict(showgrid=True, gridcolor='#1E2329', color='#848E9C',
+                       tickfont=dict(size=9), range=[lo - pad, hi + pad], fixedrange=True),
+        )
+        st.plotly_chart(fig, width='stretch', config={'displayModeBar': False})
 
 
 def panel_liquidez(detalle):
     # Cada cuenta se muestra en su divisa nativa (eToro en USD); el patrimonio total y
     # los % ya usan el valor convertido a EUR por detras.
-    SIMBOLO = {'EUR': '&#8364;', 'USD': 'US$', 'GBP': '&#163;', 'GBX': '&#163;', 'CHF': 'CHF'}
+    SIMBOLO = {'EUR': '&#8364;', 'USD': '$', 'GBP': '&#163;', 'GBX': '&#163;', 'CHF': 'CHF'}
     st.markdown(encabezado_columnas([
         ('Plataforma', 'flex:1;', 'left'),
         ('Divisa', 'width:70px;', 'center'),
@@ -170,96 +219,128 @@ def panel_materias_primas(detalle):
                 unsafe_allow_html=True
             )
     st.markdown("<p style='color:#848E9C;font-size:11px;margin:10px 0 4px;'>"
-                "Evolucion precio &#8364;/kg (30 dias)</p>", unsafe_allow_html=True)
+                "Evolucion precio USD/onza (6 meses)</p>", unsafe_allow_html=True)
     col_oro, col_plata = st.columns(2)
     for col, metal, label in [(col_oro, 'oro', 'Oro'), (col_plata, 'plata', 'Plata')]:
-        with col:
-            fechas, valores = historico_metal_api(metal)
-            if fechas and valores:
-                y_min, y_max = rango_y_grafico(valores)
-                fig = go.Figure()
-                fig.add_trace(go.Scatter(
-                    x=fechas, y=valores,
-                    line=dict(color='#F0B90B', width=1.5, shape='spline'),
-                    mode='lines', showlegend=False,
-                    hovertemplate='%{y:,.0f} &#8364;<extra></extra>',
-                ))
-                fig.update_layout(
-                    title=dict(text=label, font=dict(color='#848E9C', size=11)),
-                    paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
-                    margin=dict(l=0, r=0, t=24, b=0), height=120,
-                    xaxis=dict(showgrid=False, color='#848E9C', tickfont=dict(size=9)),
-                    yaxis=dict(showgrid=True, gridcolor='#1E2329', color='#848E9C',
-                               tickfont=dict(size=9), range=[y_min, y_max]),
-                )
-                st.plotly_chart(fig, width='stretch', config={'displayModeBar': False})
-            else:
-                st.markdown(f"<p style='color:#333;font-size:12px;'>{label}: sin datos</p>",
-                            unsafe_allow_html=True)
+        fechas, valores = historico_metal_api(metal, meses=6)
+        grafico_mini_precio(col, label, fechas, valores, unidad='USD')
 
 
-def panel_criptoactivos(detalle):
-    st.markdown(encabezado_columnas([
-        ('Activo', 'flex:1;', 'left'),
-        ('Cantidad', 'width:100px;', 'center'),
-        ('Valor', 'width:90px;', 'right'),
-    ]), unsafe_allow_html=True)
-    cripto_map = {'BTC': 'bitcoin', 'ETH': 'ethereum', 'USDC': 'usd-coin'}
-    nombre_map = {'BTC': 'Bitcoin', 'ETH': 'Ethereum', 'USDC': 'USDC'}
-    vistos = {}
-    for row in detalle:
-        nombre, broker, divisa, composicion, sector, geografia, vehiculo, ticker, *_, valor, cantidad = row
-        clave = ticker or nombre
-        if clave not in vistos:
-            vistos[clave] = {
-                'nombre': nombre_map.get(ticker, nombre.split(' - ')[-1]),
-                'cantidad': 0, 'valor': 0,
-            }
-        vistos[clave]['cantidad'] += cantidad
-        vistos[clave]['valor'] += valor
+NOMBRE_MONEDA = {'BTC': 'Bitcoin', 'ETH': 'Ethereum', 'USDC': 'USDC'}
 
-    for clave, d in vistos.items():
+
+def _num_color(pct, sufijo=''):
+    if pct is None:
+        return "<span style='color:#5C6470;font-size:11px;'>&mdash;</span>"
+    col = '#0ECB81' if pct >= 0 else '#F6465D'
+    return f"<span style='color:{col};font-size:11px;'>{pct:+.1f}%{sufijo}</span>"
+
+
+def _vista_rentabilidad_cripto(arbol):
+    """Segunda tarjeta: rentabilidades. Por posicion: carne (capital, valor
+    actualizado, rent. real neta desde inicio) y leche (earnings, rendimiento
+    ANUALIZADO sobre el valor inicial). Debajo, los graficos de BTC/ETH."""
+    def _celda(valor_html, pct, sufijo='', ml=0):
+        return (f"<span style='display:inline-flex;flex-direction:column;align-items:flex-end;"
+                f"width:88px;margin-left:{ml}px;'>"
+                f"<span style='color:#EAECEF;font-size:12px;line-height:1.25;'>{valor_html}</span>"
+                f"<span style='line-height:1.1;'>{_num_color(pct, sufijo)}</span></span>")
+
+    st.markdown(
+        "<div style='display:flex;align-items:flex-end;padding:2px 0 4px;"
+        "border-bottom:1px solid #2B3139;'>"
+        "<span style='color:#848E9C;font-size:10px;font-weight:700;flex:1;'>POSICION</span>"
+        "<span style='color:#848E9C;font-size:10px;font-weight:700;width:88px;text-align:right;'>"
+        "CARNE</span>"
+        "<span style='color:#848E9C;font-size:10px;font-weight:700;width:88px;text-align:right;"
+        "margin-left:8px;'>LECHE</span></div>", unsafe_allow_html=True)
+
+    for m in arbol['monedas']:
+        visibles = [p for e in m['estrategias'] for p in e['posiciones']
+                    if not (p.get('carne_rent') is None and (p.get('leche') or 0) <= 0.005)]
+        if not visibles:
+            continue
         st.markdown(
-            f"<div style='display:flex;justify-content:space-between;"
-            f"padding:5px 0;border-bottom:1px solid #1E2329;'>"
-            f"<span style='color:#EAECEF;font-size:14px;flex:1;'>{d['nombre']}</span>"
-            f"<span style='color:#848E9C;font-size:14px;width:100px;text-align:center;'>"
-            f"{d['cantidad']:.4f}</span>"
-            f"<span style='color:#EAECEF;font-size:14px;font-weight:600;width:90px;"
-            f"text-align:right;'>{formato_eur(d['valor'])} &#8364;</span></div>",
-            unsafe_allow_html=True
-        )
+            f"<div style='color:#F0B90B;font-size:13px;font-weight:700;padding:8px 0 2px;'>"
+            f"{NOMBRE_MONEDA.get(m['moneda'], m['moneda'])}</div>", unsafe_allow_html=True)
+        for p in visibles:
+            carne_cel = _celda(f"{formato_eur(p['carne'])} &#8364;", p.get('carne_rent'))
+            leche_val = f"+{p['leche']:,.1f} &#8364;" if p.get('leche', 0) > 0.005 else "&mdash;"
+            leche_cel = _celda(leche_val, p.get('leche_anual'), sufijo='/a', ml=8)
+            st.markdown(
+                f"<div style='display:flex;align-items:center;"
+                f"padding:3px 0 3px 8px;border-bottom:1px solid #1A1D21;'>"
+                f"<span style='color:#EAECEF;font-size:12px;flex:1;'>{p['nombre']}</span>"
+                f"{carne_cel}{leche_cel}</div>", unsafe_allow_html=True)
 
-    st.markdown("<p style='color:#848E9C;font-size:11px;margin:10px 0 4px;'>"
-                "Evolucion precio USD (12 meses)</p>", unsafe_allow_html=True)
+    st.markdown("<p style='color:#5C6470;font-size:10px;margin:8px 0 10px;'>"
+                "Carne = rentabilidad real neta del capital desde su inicio (valor actualizado). "
+                "Leche = rendimiento anualizado de los earnings sobre el valor inicial.</p>",
+                unsafe_allow_html=True)
+
+    st.markdown("<p style='color:#848E9C;font-size:11px;margin:6px 0 4px;'>"
+                "Evolucion precio USD (6 meses)</p>", unsafe_allow_html=True)
     col_btc, col_eth = st.columns(2)
     for col, cripto_id, label in [
             (col_btc, 'bitcoin', 'Bitcoin'), (col_eth, 'ethereum', 'Ethereum')]:
-        with col:
-            fechas, valores = historico_cripto_api(cripto_id)
-            if fechas and valores:
-                from datetime import datetime
-                etiq = [datetime.fromtimestamp(f/1000).strftime('%b') for f in fechas]
-                y_min, y_max = rango_y_grafico(valores)
-                fig = go.Figure()
-                fig.add_trace(go.Scatter(
-                    x=etiq, y=valores,
-                    line=dict(color='#F0B90B', width=1.5, shape='spline'),
-                    mode='lines', showlegend=False,
-                    hovertemplate='%{y:,.0f} USD<extra></extra>',
-                ))
-                fig.update_layout(
-                    title=dict(text=label, font=dict(color='#848E9C', size=11)),
-                    paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
-                    margin=dict(l=0, r=0, t=24, b=0), height=120,
-                    xaxis=dict(showgrid=False, color='#848E9C', tickfont=dict(size=9)),
-                    yaxis=dict(showgrid=True, gridcolor='#1E2329', color='#848E9C',
-                               tickfont=dict(size=9), range=[y_min, y_max]),
-                )
-                st.plotly_chart(fig, width='stretch', config={'displayModeBar': False})
-            else:
-                st.markdown(f"<p style='color:#333;font-size:12px;'>{label}: sin datos</p>",
-                            unsafe_allow_html=True)
+        fechas, valores = historico_cripto_api(cripto_id, dias=180)
+        grafico_mini_precio(col, label, fechas, valores, unidad='USD')
+
+
+def panel_criptoactivos(detalle):
+    """Dos vistas: inventario (arbol Moneda->Estrategia->posiciones) y, al pulsar,
+    rentabilidades (carne/leche con sus %). Los graficos van en la de rentabilidades."""
+    arbol = consultas.arbol_cripto()
+    if 'cripto_vista' not in st.session_state:
+        st.session_state.cripto_vista = 'arbol'
+    if st.session_state.cripto_vista == 'rentabilidad':
+        _vista_rentabilidad_cripto(arbol)
+        return
+
+    # Inventario: todo el arbol es un unico bloque CLICABLE. Se conservan los % de
+    # reparto (amarillos); se quitan solo las anotaciones verdes de leche.
+    # Al pulsar en cualquier parte de la tarjeta -> vista de rentabilidades.
+    filas = []
+    for m in arbol['monedas']:
+        filas.append(
+            f"<div style='display:flex;justify-content:space-between;align-items:baseline;"
+            f"padding:9px 0 5px;border-bottom:1px solid #2B3139;margin-top:6px;'>"
+            f"<span style='color:#F0B90B;font-size:15px;font-weight:700;flex:1;'>"
+            f"{NOMBRE_MONEDA.get(m['moneda'], m['moneda'])}</span>"
+            f"<span style='color:#F0B90B;font-size:13px;font-weight:600;width:70px;"
+            f"text-align:right;'>{m['pct']:.0f}%</span>"
+            f"<span style='color:#EAECEF;font-size:14px;font-weight:700;width:100px;"
+            f"text-align:right;'>{formato_eur(m['valor'])} &#8364;</span></div>")
+        for e in m['estrategias']:
+            colapsar = e['estrategia'] in ('HOLD', 'STAKING')
+            nombre_estr = e['nombre']
+            if colapsar:
+                plataformas = ', '.join(dict.fromkeys(p['plataforma'] for p in e['posiciones']))
+                nombre_estr += (f" <span style='color:#848E9C;font-weight:400;font-size:12px;'>"
+                                f"({plataformas})</span>")
+            filas.append(
+                f"<div style='display:flex;justify-content:space-between;align-items:baseline;"
+                f"padding:5px 0 2px 12px;'>"
+                f"<span style='color:#EAECEF;font-size:13px;font-weight:600;flex:1;'>{nombre_estr}</span>"
+                f"<span style='color:#F0B90B;font-size:12px;font-weight:600;width:70px;"
+                f"text-align:right;'>{e['pct']:.0f}%</span>"
+                f"<span style='color:#EAECEF;font-size:13px;font-weight:600;width:100px;"
+                f"text-align:right;'>{formato_eur(e['valor'])} &#8364;</span></div>")
+            if colapsar:
+                continue
+            for p in e['posiciones']:
+                filas.append(
+                    f"<div style='display:flex;justify-content:space-between;align-items:baseline;"
+                    f"padding:3px 0 3px 26px;border-bottom:1px solid #1A1D21;'>"
+                    f"<span style='color:#B7BDC6;font-size:12px;flex:1;'>{p['nombre']}</span>"
+                    f"<span style='color:#F0B90B;font-size:11px;font-weight:600;width:70px;"
+                    f"text-align:right;'>{p['pct']:.0f}%</span>"
+                    f"<span style='color:#B7BDC6;font-size:12px;width:100px;text-align:right;'>"
+                    f"{formato_eur(p['valor'])} &#8364;</span></div>")
+    filas.append("<div style='height:8px;'></div>")   # respiro al final (ultima fila BTC)
+    if fila_clicable("".join(filas), key='cripto_ver_rent'):
+        st.session_state.cripto_vista = 'rentabilidad'
+        st.rerun()
 
 
 def panel_renta_fija(detalle):
@@ -1046,6 +1127,8 @@ def mostrar():
                 titulo_panel = f"Renta Variable - {sufijo_rv}"
             else:
                 titulo_panel = f"{nombre_completo} &mdash; Por vehiculo"
+        elif pilar_sel == 'CRIPTOACTIVOS' and st.session_state.get('cripto_vista') == 'rentabilidad':
+            titulo_panel = "Criptoactivos - Rentabilidad"
         else:
             titulo_panel = f"{nombre_completo} &mdash; Detalle"
         icono_panel = ICONOS_PILAR.get(pilar_sel, 'category')
@@ -1073,6 +1156,12 @@ def mostrar():
             with st.container(key="plataforma_boton_volver"):
                 if st.button("", icon=":material/arrow_back:", key="inv_alt_volver_arriba"):
                     st.session_state.inv_alt_activo_sel = None
+                    st.rerun()
+
+        if pilar_sel == 'CRIPTOACTIVOS' and st.session_state.get('cripto_vista') == 'rentabilidad':
+            with st.container(key="cripto_boton_volver"):
+                if st.button("", icon=":material/arrow_back:", key="cripto_volver_arriba"):
+                    st.session_state.cripto_vista = 'arbol'
                     st.rerun()
 
         with st.container(key="panel_detalle"):

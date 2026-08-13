@@ -163,11 +163,13 @@ CSS_GLOBAL = """
 
     /* Boton "volver" de navegacion interna (Renta Variable, Patrimonio):
        icono solo, fuera de la tarjeta, compacto y pegado a la izquierda. */
-    div[class*="st-key-rv_boton_volver"], div[class*="st-key-plataforma_boton_volver"] {
+    div[class*="st-key-rv_boton_volver"], div[class*="st-key-plataforma_boton_volver"],
+    div[class*="st-key-cripto_boton_volver"] {
         margin-bottom: -12px;
     }
     div[class*="st-key-rv_boton_volver"] .stButton > button,
-    div[class*="st-key-plataforma_boton_volver"] .stButton > button {
+    div[class*="st-key-plataforma_boton_volver"] .stButton > button,
+    div[class*="st-key-cripto_boton_volver"] .stButton > button {
         padding: 6px 10px !important;
         min-height: 0 !important;
     }

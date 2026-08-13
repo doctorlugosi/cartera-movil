@@ -423,19 +423,32 @@ def evolucion_patrimonio_mensual():
 
 def historico_patrimonio():
     """
-    Devuelve la evolucion mensual del patrimonio desde la tabla historico_patrimonio.
-    Retorna lista de tuplas (fecha, valor_total) ordenadas por fecha.
+    Evolucion MENSUAL del patrimonio desde la tabla historico_patrimonio.
+    La tabla puede tener varios snapshots por mes; para cada mes se representa
+    el del dia 28, y si no lo hay, el mas cercano a 28 dentro de la ventana
+    [25, 31] (28 -3 / +3 dias). Los snapshots fuera de esa ventana se ignoran.
+    Retorna lista de (fecha, valor_total) con un punto por mes, ordenada.
     """
     conn = conectar()
     c = conn.cursor()
-    c.execute("""
-        SELECT fecha, valor_total
-        FROM historico_patrimonio
-        ORDER BY fecha ASC
-    """)
-    resultado = c.fetchall()
+    filas = c.execute(
+        "SELECT fecha, valor_total FROM historico_patrimonio ORDER BY fecha ASC"
+    ).fetchall()
     conn.close()
-    return resultado
+
+    # mes 'YYYY-MM' -> (fecha, valor, distancia_al_28)
+    mejor_por_mes = {}
+    for fecha, valor in filas:
+        dia = int(fecha[8:10])
+        if not (25 <= dia <= 31):
+            continue
+        mes = fecha[:7]
+        distancia = abs(dia - 28)
+        if mes not in mejor_por_mes or distancia < mejor_por_mes[mes][2]:
+            mejor_por_mes[mes] = (fecha, valor, distancia)
+
+    return [(f, v) for f, v, _ in
+            (mejor_por_mes[m] for m in sorted(mejor_por_mes))]
 
 def distribucion_por_pilar():
     conn = conectar()
@@ -692,3 +705,106 @@ def historico_valoraciones_activo(activo_id, dias=365):
     """, (activo_id, f'-{dias} days')).fetchall()
     conn.close()
     return [(fecha, precio * factor) for fecha, precio in resultado]
+
+
+ORDEN_ESTRATEGIA = {'HOLD': 0, 'STAKING': 1, 'YIELD_FARMING': 2, 'PERPS': 3}
+NOMBRE_ESTRATEGIA = {'HOLD': 'Hold', 'STAKING': 'Staking',
+                     'YIELD_FARMING': 'Yield Farming', 'PERPS': 'Perps'}
+
+
+def arbol_cripto():
+    """Arbol del pilar criptoactivos: Moneda -> Estrategia -> posiciones.
+    Cada nivel lleva su valor en EUR y su % respecto al PADRE (la moneda sobre el
+    total cripto; la estrategia sobre su moneda; la posicion sobre su estrategia).
+    Las posiciones snapshot (pools/perps) incluyen rentabilidad en su divisa:
+    (liquidity + earnings - valor_inicial) / valor_inicial."""
+    conn = conectar()
+    c = conn.cursor()
+    filas = c.execute("""
+        SELECT a.id, a.nombre, a.broker, p.moneda, p.estrategia, p.caracteristicas,
+               p.lectura, p.divisa_inicial, p.valor_inicial, p.liq_actual, p.earn_actual,
+               p.fecha_inicio, p.carne_actual, p.leche_actual, COALESCE(p.autocompone, 0)
+        FROM cripto_posiciones p JOIN activos a ON a.id=p.activo_id
+        WHERE a.activo=1
+    """).fetchall()
+
+    from datetime import date
+    fx = c.execute("SELECT tipo_cambio FROM divisas_fx WHERE par='USD/EUR' "
+                   "ORDER BY fecha DESC LIMIT 1").fetchone()
+    tipo_usd = fx[0] if fx else 1.16          # price_usd = price_eur * tipo_usd
+
+    posiciones = []
+    for (aid, nombre, broker, moneda, estr, carac, lectura, divisa_ini,
+         v_ini, liq, earn, f_ini, carne_a, leche_a, autoc) in filas:
+        valor = valor_actual_activo(c, aid) or 0.0
+
+        # --- carne (capital) / leche (earnings), en EUR ---
+        if carne_a is not None:                       # on-chain (pools/lido/metamask)
+            carne, leche = carne_a, (leche_a or 0.0)
+        elif (liq is not None) and not autoc:         # snapshot manual: reparto proporcional
+            tot = (liq or 0) + (earn or 0)
+            carne = valor * ((liq or 0) / tot) if tot else valor
+            leche = valor - carne
+        else:                                         # hold / autocompuesto: todo capital
+            carne, leche = valor, 0.0
+        leche_pct = (leche / carne * 100) if carne else None
+
+        # --- base (valor inicial) en EUR: valor_inicial (convertido) o coste FIFO ---
+        if v_ini:
+            base_eur = v_ini / (tipo_usd if (divisa_ini or 'EUR') == 'USD' else 1.0)
+        else:
+            coste = c.execute(
+                "SELECT SUM(cantidad_disponible * precio_coste_eur) FROM lotes_fifo WHERE activo_id=?",
+                (aid,)).fetchone()[0]
+            base_eur = coste if (coste and coste > 0.01) else None
+
+        dias = None
+        if f_ini:
+            try:
+                dias = max((date.today() - date.fromisoformat(f_ini)).days, 1)
+            except Exception:
+                dias = None
+
+        # carne: rentabilidad real neta desde inicio (capital, valor actualizado)
+        carne_rent = ((carne - base_eur) / base_eur * 100) if (base_eur and base_eur > 0) else None
+        # leche: rendimiento ANUALIZADO sobre el valor inicial
+        leche_anual = None
+        if leche and leche > 0.005 and base_eur and base_eur > 0 and dias:
+            leche_anual = (leche / base_eur) * (365.0 / dias) * 100
+        # rent global (compat): total sobre inicial
+        rent = (((carne + leche) - base_eur) / base_eur * 100) if (base_eur and base_eur > 0) else None
+
+        posiciones.append({
+            'nombre': nombre, 'plataforma': broker, 'moneda': moneda,
+            'estrategia': estr, 'caracteristicas': carac or '', 'valor': valor,
+            'carne': carne, 'leche': leche, 'leche_pct': leche_pct,
+            'carne_rent': carne_rent, 'leche_anual': leche_anual, 'dias': dias,
+            'rent': rent, 'divisa': divisa_ini or 'EUR', 'lectura': lectura,
+        })
+    conn.close()
+
+    total = sum(p['valor'] for p in posiciones) or 1.0
+    monedas = []
+    for moneda in sorted({p['moneda'] for p in posiciones}, key=lambda m: -sum(
+            p['valor'] for p in posiciones if p['moneda'] == m)):
+        pm = [p for p in posiciones if p['moneda'] == moneda]
+        vm = sum(p['valor'] for p in pm) or 1.0
+        estrategias = []
+        for estr in sorted({p['estrategia'] for p in pm},
+                           key=lambda e: ORDEN_ESTRATEGIA.get(e, 9)):
+            pe = [p for p in pm if p['estrategia'] == estr]
+            ve = sum(p['valor'] for p in pe) or 1.0
+            carne_e = sum(p['carne'] for p in pe)
+            leche_e = sum(p['leche'] for p in pe)
+            estrategias.append({
+                'estrategia': estr, 'nombre': NOMBRE_ESTRATEGIA.get(estr, estr),
+                'valor': ve, 'pct': ve / vm * 100, 'carne': carne_e, 'leche': leche_e,
+                'leche_pct': (leche_e / carne_e * 100) if carne_e else None,
+                'posiciones': [dict(p, pct=p['valor'] / ve * 100)
+                               for p in sorted(pe, key=lambda x: -x['valor'])],
+            })
+        monedas.append({'moneda': moneda, 'valor': vm, 'pct': vm / total * 100,
+                        'carne': sum(p['carne'] for p in pm),
+                        'leche': sum(p['leche'] for p in pm),
+                        'estrategias': estrategias})
+    return {'total': total, 'monedas': monedas}

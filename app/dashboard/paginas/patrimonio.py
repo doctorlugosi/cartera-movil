@@ -166,7 +166,8 @@ def mostrar():
                 unsafe_allow_html=True
             )
 
-        y_min, y_max = rango_y_grafico(valores)
+        # Rango Y fijo del grafico de patrimonio total (peticion del usuario)
+        y_min, y_max = 700_000, 1_000_000
 
         fig = go.Figure()
         fig.add_trace(go.Scatter(
