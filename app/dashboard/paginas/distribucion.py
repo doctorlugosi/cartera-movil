@@ -1,12 +1,16 @@
 import streamlit as st
 import plotly.graph_objects as go
-import requests
 import sys
 import os
 
 RUTA_DASHBOARD = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if RUTA_DASHBOARD not in sys.path:
     sys.path.insert(0, RUTA_DASHBOARD)
+
+RUTA_SCRIPTS = os.path.join(RUTA_DASHBOARD, '..', 'scripts')
+if RUTA_SCRIPTS not in sys.path:
+    sys.path.insert(0, RUTA_SCRIPTS)
+import red_navegador   # HTTP con huella TLS de navegador (pasa el filtro de red)
 
 from datos import consultas
 from utilidades import formato_eur, rango_y_grafico
@@ -91,7 +95,7 @@ def historico_cripto_api(cripto_id, dias=180):
     devuelve granularidad diaria; se usan todos los puntos para una linea suave."""
     try:
         url = f"https://api.coingecko.com/api/v3/coins/{cripto_id}/market_chart"
-        r = requests.get(url, params={'vs_currency': 'usd', 'days': dias}, timeout=10)
+        r = red_navegador.get(url, params={'vs_currency': 'usd', 'days': dias}, timeout=10)
         data = r.json()['prices']
         fechas = [p[0] for p in data]
         valores = [p[1] for p in data]
