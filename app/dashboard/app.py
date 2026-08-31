@@ -23,10 +23,11 @@ if 'modo_privado' not in st.session_state:
 aplicar_estilo(st, st.session_state.modo_privado)
 
 # --- Navegacion por pestañas ---
-PESTANAS = ["Patrimonio", "Distribución", "Sistema"]
+PESTANAS = ["Patrimonio", "Distribución", "Análisis", "Sistema"]
 ICONOS_PESTANA = {
     "Patrimonio":   ":material/account_balance_wallet:",
     "Distribución": ":material/donut_small:",
+    "Análisis":     ":material/target:",
     "Sistema":      ":material/settings:",
 }
 
@@ -73,6 +74,9 @@ if st.session_state.pestana_activa == "Patrimonio":
 elif st.session_state.pestana_activa == "Distribución":
     from paginas import distribucion
     distribucion.mostrar()
+elif st.session_state.pestana_activa == "Análisis":
+    from paginas import analisis
+    analisis.mostrar()
 elif st.session_state.pestana_activa == "Sistema":
     from paginas import sistema
     sistema.mostrar()
