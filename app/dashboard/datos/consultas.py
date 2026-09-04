@@ -426,8 +426,9 @@ def historico_patrimonio():
     Evolucion MENSUAL del patrimonio desde la tabla historico_patrimonio.
     La tabla puede tener varios snapshots por mes; para cada mes se representa
     el del dia 28, y si no lo hay, el mas cercano a 28 dentro de la ventana
-    [25, 31] (28 -3 / +3 dias). Los snapshots fuera de esa ventana se ignoran.
-    Retorna lista de (fecha, valor_total) con un punto por mes, ordenada.
+    [25, 31] (28 -3 / +3 dias). En caso de empate en distancia (p.ej. 25 y 31),
+    gana el mas cercano a fin de mes (el posterior). Los snapshots fuera de esa
+    ventana se ignoran. Retorna lista de (fecha, valor_total) por mes, ordenada.
     """
     conn = conectar()
     c = conn.cursor()
@@ -444,7 +445,7 @@ def historico_patrimonio():
             continue
         mes = fecha[:7]
         distancia = abs(dia - 28)
-        if mes not in mejor_por_mes or distancia < mejor_por_mes[mes][2]:
+        if mes not in mejor_por_mes or distancia <= mejor_por_mes[mes][2]:
             mejor_por_mes[mes] = (fecha, valor, distancia)
 
     return [(f, v) for f, v, _ in
