@@ -7,10 +7,13 @@ RUTA_DASHBOARD = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if RUTA_DASHBOARD not in sys.path:
     sys.path.insert(0, RUTA_DASHBOARD)
 
-RUTA_SCRIPTS = os.path.join(RUTA_DASHBOARD, '..', 'scripts')
-if RUTA_SCRIPTS not in sys.path:
-    sys.path.insert(0, RUTA_SCRIPTS)
-import red_navegador   # HTTP con huella TLS de navegador (pasa el filtro de red)
+try:
+    RUTA_SCRIPTS = os.path.join(RUTA_DASHBOARD, '..', 'scripts')
+    if RUTA_SCRIPTS not in sys.path:
+        sys.path.insert(0, RUTA_SCRIPTS)
+    import red_navegador   # HTTP con huella TLS de navegador (pasa el filtro de red)
+except Exception:          # en la web movil no hay scripts/: el navegador ya pasa el TLS
+    import requests as red_navegador
 
 from datos import consultas
 from utilidades import formato_eur, rango_y_grafico
