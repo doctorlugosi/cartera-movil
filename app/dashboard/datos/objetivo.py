@@ -1,7 +1,7 @@
 """
 DISTRIBUCION OBJETIVO (para la pestana Analisis)
 ================================================
-Lee la distribucion objetivo del usuario (imports/clasificacion/objetivo_distribucion.csv,
+Lee la distribucion objetivo del usuario (imports/Objetivos/objetivo_distribucion.csv,
 jerarquico por 'ruta') y la tabla de sectores por escenario macro
 (objetivo_sectores.csv), y las CRUZA con la distribucion real (consultas del dashboard)
 para el informe comparativo (semaforo + rebalanceo en euros).
@@ -14,9 +14,9 @@ import csv
 import unicodedata
 
 RAIZ = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-CSV_OBJ = os.path.join(RAIZ, 'imports', 'clasificacion', 'objetivo_distribucion.csv')
-CSV_SEC = os.path.join(RAIZ, 'imports', 'clasificacion', 'objetivo_sectores.csv')
-CSV_RF = os.path.join(RAIZ, 'imports', 'clasificacion', 'rf_bloques.csv')
+CSV_OBJ = os.path.join(RAIZ, 'imports', 'Objetivos', 'objetivo_distribucion.csv')
+CSV_SEC = os.path.join(RAIZ, 'imports', 'Objetivos', 'objetivo_sectores.csv')
+CSV_RF = os.path.join(RAIZ, 'imports', 'Objetivos', 'rf_bloques.csv')
 
 ESCENARIOS = [('crecimiento', 'Crecimiento'), ('estable', 'Estable'),
               ('recesion', 'Recesión / estanflación')]
