@@ -1,37 +1,38 @@
-ruta,etiqueta,peso_pct,nota
-RENTA_VARIABLE,Renta Variable,65,
-RENTA_VARIABLE > ACCIONES,Acciones,75,3000 €/empresa; diversificación por sectores
-RENTA_VARIABLE > ACCIONES > DIVIDENDOS,Dividendos,95,profundiza por sector -> objetivo_sectores.csv (seleccionable por escenario)
-RENTA_VARIABLE > ACCIONES > CRECIMIENTO,Crecimiento,5,oportunidades; 7-8 empresas
-RENTA_VARIABLE > FONDOS_Y_CARTERAS,Fondos y carteras,20,Plano (sin sub-%). Value: Bestinfond + Bestinver Internacional; Pensiones: Plan PP Repsol; Carteras indexadas Red + Metal — ajustar sin invertir en los 3 primeros
-RENTA_VARIABLE > ETFS,ETFs,5,
-RENTA_VARIABLE > ETFS > REGIONES,Regiones,60,
-RENTA_VARIABLE > ETFS > REGIONES > GLOBAL,Global,50,obj 8000 €
-RENTA_VARIABLE > ETFS > REGIONES > DESARROLLADOS,Desarrollados,20,obj 2000 €
-RENTA_VARIABLE > ETFS > REGIONES > EMERGENTES,Emergentes,30,obj 3000 €; FRK FTSE India IE00BHZRQZ17
-RENTA_VARIABLE > ETFS > TEMATICAS,Temáticas,40,
-RENTA_VARIABLE > ETFS > TEMATICAS > IA,IA,26,GX Robotics AI IE00BLCHJB90; obj 3000 €
-RENTA_VARIABLE > ETFS > TEMATICAS > URANIO,Uranio,26,Global X Uranium IE000NDWFGA5; obj 3000 €
-RENTA_VARIABLE > ETFS > TEMATICAS > ETF_1,ETF 1,16,por adquirir
-RENTA_VARIABLE > ETFS > TEMATICAS > ETF_2,ETF 2,16,por adquirir
-RENTA_VARIABLE > ETFS > TEMATICAS > ETF_3,ETF 3,16,por adquirir
-RENTA_FIJA,Renta Fija,12,REVISAR mapeo: ¿incluye crowdlending o solo bonos/iBonds?
-RENTA_FIJA > BLOQUE_CONSERVADOR,Bloque conservador,40,
-RENTA_FIJA > BLOQUE_RENTABILIDAD,Bloque rentabilidad,60,
-MATERIAS_PRIMAS,Materias Primas,6,
-CRIPTOACTIVOS,Criptoactivos,5,
-CRIPTOACTIVOS > BTC,BTC,25,Trezor
-CRIPTOACTIVOS > BTC > HOLD,Hold,100,Trezor
-CRIPTOACTIVOS > ETH,ETH,75,
-CRIPTOACTIVOS > ETH > STAKING,Staking,60,wstETH · Lido
-CRIPTOACTIVOS > ETH > YIELD_FARMING,Yield farming,32,
-CRIPTOACTIVOS > ETH > YIELD_FARMING > POOL_ANCHA,Pool ancha (-20/+25),20,Pancake
-CRIPTOACTIVOS > ETH > YIELD_FARMING > POOL_AUTOMATIZADA,Pool automatizada,50,Beefy
-CRIPTOACTIVOS > ETH > YIELD_FARMING > POOL_ESTRECHA,Pool estrecha,30,Pancake
-CRIPTOACTIVOS > ETH > PERPS,Perps,8,GMX
-INVERSIONES_ALTERNATIVAS,Inversiones Alternativas,5,
-INVERSIONES_ALTERNATIVAS > PRESTAMOS,Préstamos,90,crowdlending Mintos
-INVERSIONES_ALTERNATIVAS > BONOS,Bonos,10,crowdlending Mintos
-INMOBILIARIO,Inmobiliario,4,
-LIQUIDEZ,Liquidez,2,
-NEGOCIOS,Negocios,1,start-ups
+﻿Pilar;Categoria;Subcategoria;Detalle;Peso;Nota
+Renta Variable;;;;65;
+;Acciones;;;75;"3000 €/empresa; diversificar por sectores"
+;;Dividendos;;95;reparto por sector en objetivo_sectores.csv (por escenario)
+;;Crecimiento;;5;"oportunidades; 7-8 empresas"
+;Fondos y carteras;;;20;"plano; ajustar sin invertir en los 3 primeros"
+;ETFs;;;5;
+;;Regiones;;60;
+;;;Global;50;obj 8000 €
+;;;Desarrollados;20;obj 2000 €
+;;;Emergentes;30;"obj 3000 €; FRK FTSE India"
+;;Tematicas;;40;
+;;;IA;26;GX Robotics AI
+;;;Uranio;26;Global X Uranium
+;;;ETF 1;16;por adquirir
+;;;ETF 2;16;por adquirir
+;;;ETF 3;16;por adquirir
+Renta Fija;;;;12;solo bonos/iBonds (el crowdlending va en Inv. Alternativas)
+;Bloque conservador;;;28;solo AAA
+;Bloque rentabilidad;;;36;resto
+;Bloque indexada;;;36;Indexada a IPC
+Materias Primas;;;;6;
+Criptoactivos;;;;5;
+;BTC;;;25;Trezor
+;;Hold;;100;Trezor
+;ETH;;;75;
+;;Staking;;60;wstETH · Lido
+;;Yield farming;;32;
+;;;Pool ancha (-20/+25);20;Pancake
+;;;Pool automatizada;50;Beefy
+;;;Pool estrecha;30;Pancake
+;;Perps;;8;GMX
+Inversiones Alternativas;;;;5;
+;Prestamos;;;90;crowdlending Mintos
+;Bonos;;;10;crowdlending Mintos
+Inmobiliario;;;;4;
+Liquidez;;;;2;
+Negocios;;;;1;start-ups

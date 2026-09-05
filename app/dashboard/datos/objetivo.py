@@ -1,13 +1,17 @@
 """
 DISTRIBUCION OBJETIVO (para la pestana Analisis)
 ================================================
-Lee la distribucion objetivo del usuario (imports/Objetivos/objetivo_distribucion.csv,
-jerarquico por 'ruta') y la tabla de sectores por escenario macro
-(objetivo_sectores.csv), y las CRUZA con la distribucion real (consultas del dashboard)
-para el informe comparativo (semaforo + rebalanceo en euros).
+Lee la distribucion objetivo del usuario (imports/Objetivos/objetivo_distribucion.csv)
+y la tabla de sectores por escenario macro (objetivo_sectores.csv), y las CRUZA con la
+distribucion real (consultas del dashboard) para el informe comparativo (semaforo +
+rebalanceo en euros).
 
-El CSV lleva el peso RELATIVO a su grupo (los hermanos suman 100 dentro de cada nivel);
-aqui se calcula el peso ABSOLUTO (% del total) multiplicando por la cadena de padres.
+FORMATO del CSV (columnas indentadas, facil de editar en Excel): columnas
+  Pilar | Categoria | Subcategoria | Detalle | Peso | Nota
+Cada fila rellena SOLO la columna de su nivel (las de arriba se heredan de la fila
+anterior); el peso es RELATIVO a su grupo (los hermanos suman 100). Aqui se reconstruye
+el arbol y se calcula el peso ABSOLUTO (% del total) multiplicando por la cadena de padres.
+Los lectores toleran que Excel guarde el CSV con ';' y/o con BOM.
 """
 import os
 import csv
@@ -46,25 +50,62 @@ def _norm(s):
     return ''.join(ch for ch in s.upper() if ch.isalnum())
 
 
+def _clave(label):
+    """Clave interna estable a partir de una etiqueta legible (sin acentos, en
+    mayusculas, con '_'). Ej.: 'Yield farming' -> 'YIELD_FARMING', 'ETFs' -> 'ETFS'."""
+    s = unicodedata.normalize('NFKD', str(label or '')).encode('ascii', 'ignore').decode().upper()
+    out, hueco = [], False
+    for ch in s:
+        if ch.isalnum():
+            out.append(ch); hueco = False
+        elif not hueco:
+            out.append('_'); hueco = True
+    return ''.join(out).strip('_')
+
+
+def _filas_csv(path):
+    """Lee un CSV tolerando lo que hace Excel al guardar: BOM (utf-8-sig) y el
+    separador ';' (habitual en Espanol) ademas de ','."""
+    if not os.path.exists(path):
+        return []
+    with open(path, encoding='utf-8-sig', newline='') as f:
+        cabecera = f.readline()
+        f.seek(0)
+        delim = ';' if cabecera.count(';') > cabecera.count(',') else ','
+        return list(csv.DictReader(f, delimiter=delim))
+
+
+NIVELES = ['Pilar', 'Categoria', 'Subcategoria', 'Detalle']
+
+
 def cargar_objetivo():
     """Devuelve {ruta: nodo} con nodo = {ruta, etiqueta, peso_pct (rel. padre),
-    peso_abs (% total), nota, padre, hijos:[rutas]}."""
+    peso_abs (% total), nota, padre, hijos:[rutas]}. La 'ruta' se compone de claves
+    internas (p.ej. 'CRIPTOACTIVOS > ETH > STAKING') derivadas de las etiquetas."""
     nodos = {}
-    with open(CSV_OBJ, encoding='utf-8') as f:
-        for r in csv.DictReader(f):
-            ruta = (r.get('ruta') or '').strip()
-            if not ruta:
-                continue
-            peso = (r.get('peso_pct') or '').strip().replace(',', '.')
-            partes = ruta.split(' > ')
-            nodos[ruta] = {
-                'ruta': ruta,
-                'etiqueta': (r.get('etiqueta') or partes[-1]).strip(),
-                'peso_pct': float(peso) if peso else None,
-                'nota': (r.get('nota') or '').strip(),
-                'padre': ' > '.join(partes[:-1]) if len(partes) > 1 else None,
-                'hijos': [],
-            }
+    actual = [None, None, None, None]   # clave vigente en cada nivel
+    for r in _filas_csv(CSV_OBJ):
+        nivel, etiqueta = None, None
+        for i, col in enumerate(NIVELES):
+            v = (r.get(col) or '').strip()
+            if v:
+                nivel, etiqueta = i, v
+        if nivel is None:
+            continue
+        actual[nivel] = _clave(etiqueta)
+        for j in range(nivel + 1, 4):
+            actual[j] = None
+        partes = [actual[k] for k in range(nivel + 1)]
+        ruta = ' > '.join(partes)
+        peso = (r.get('Peso') or '').strip().replace(',', '.')
+        nodos[ruta] = {
+            'ruta': ruta,
+            'etiqueta': etiqueta,
+            'peso_pct': float(peso) if peso else None,
+            'nota': (r.get('Nota') or '').strip(),
+            'padre': ' > '.join(partes[:-1]) if nivel > 0 else None,
+            'hijos': [],
+        }
     for ruta, n in nodos.items():
         if n['padre'] and n['padre'] in nodos:
             nodos[n['padre']]['hijos'].append(ruta)
@@ -113,13 +154,11 @@ def hijos_objetivo(ruta):
 def cargar_rf_bloques():
     """{isin: 'conservador'|'rentabilidad'} para repartir la renta fija por bloque."""
     res = {}
-    if os.path.exists(CSV_RF):
-        with open(CSV_RF, encoding='utf-8') as f:
-            for r in csv.DictReader(f):
-                isin = (r.get('isin') or '').strip()
-                bloque = (r.get('bloque') or '').strip().lower()
-                if isin and bloque:
-                    res[isin] = bloque
+    for r in _filas_csv(CSV_RF):
+        isin = (r.get('isin') or '').strip()
+        bloque = (r.get('bloque') or '').strip().lower()
+        if isin and bloque:
+            res[isin] = bloque
     return res
 
 
@@ -127,9 +166,8 @@ def cargar_sectores(escenario='estable'):
     """{sector: peso_pct} para el escenario dado (crecimiento/estable/recesion)."""
     col = escenario if escenario in ('crecimiento', 'estable', 'recesion') else 'estable'
     res = {}
-    with open(CSV_SEC, encoding='utf-8') as f:
-        for r in csv.DictReader(f):
-            res[r['sector'].strip()] = float(str(r[col]).replace(',', '.'))
+    for r in _filas_csv(CSV_SEC):
+        res[(r.get('sector') or '').strip()] = float(str(r.get(col) or 0).replace(',', '.'))
     return res
 
 
@@ -258,8 +296,7 @@ def subcomparativa(clave_pilar, escenario='estable'):
         bloques.append(('Por composición', filas))
 
     elif clave_pilar == 'RENTA_FIJA':
-        mapa = cargar_rf_bloques()   # {isin: 'conservador'|'rentabilidad'}
-        clave_de = {'conservador': 'BLOQUE_CONSERVADOR', 'rentabilidad': 'BLOQUE_RENTABILIDAD'}
+        mapa = cargar_rf_bloques()   # {isin: 'conservador'|'rentabilidad'|'indexada'|...}
         conn = consultas.conectar()
         c = conn.cursor()
         rows = c.execute("SELECT id, isin, tipo FROM activos "
@@ -267,8 +304,9 @@ def subcomparativa(clave_pilar, escenario='estable'):
         agg = {}
         for aid, isin, tipo in rows:
             v = consultas.valor_actual_activo(c, aid) or 0.0
-            bloque = _bloque_rf(isin, tipo, mapa)
-            clave = clave_de.get(bloque, 'BLOQUE_RENTABILIDAD')
+            # 'conservador' -> 'BLOQUE_CONSERVADOR', 'indexada' -> 'BLOQUE_INDEXADA', etc.
+            # (casa con la clave del hijo del objetivo, que es 'Bloque X' -> BLOQUE_X)
+            clave = 'BLOQUE_' + _clave(_bloque_rf(isin, tipo, mapa))
             agg[clave] = agg.get(clave, 0.0) + v
         conn.close()
         total = sum(agg.values())
