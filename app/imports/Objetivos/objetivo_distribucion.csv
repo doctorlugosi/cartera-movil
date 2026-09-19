@@ -25,11 +25,9 @@ Criptoactivos;;;;5;
 ;;Hold;;100;Trezor
 ;ETH;;;75;
 ;;Staking;;60;wstETH · Lido
-;;Yield farming;;32;
-;;;Pool ancha (-20/+25);20;Pancake
-;;;Pool automatizada;50;Beefy
-;;;Pool estrecha;30;Pancake
-;;Perps;;8;GMX
+;;Yield farming;Pool automatizada;14;Beefy
+;;Swing;;12;OKX
+;;Perps;;14;GMX
 Inversiones Alternativas;;;;5;
 ;Prestamos;;;90;crowdlending Mintos
 ;Bonos;;;10;crowdlending Mintos
