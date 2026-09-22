@@ -26,6 +26,30 @@ def _a_eur(c, activo_id, valor):
     return valor / fila[0] if fila and fila[0] else valor
 
 
+# Fuentes de 'valoraciones' cuyo campo 'precio' NO es un precio unitario sino el
+# VALOR TOTAL ya calculado de la posicion. Hay que respetarlas aunque el activo
+# tenga lotes FIFO: multiplicarlas por la cantidad da cifras absurdas.
+#
+# 'MANUAL_TOTAL' lo pone scripts/reparar_valoraciones_totales.py sobre las 58
+# filas de la carga inicial del 19-20 de junio de 2026, que guardaron el total
+# en esa columna. Sin este respeto, Taylor Wimpey valia 19,7 millones de euros
+# en junio de 2026 y Bestinfond rendia un +14.683 %.
+FUENTES_VALOR_TOTAL = ('MANUAL_TOTAL', 'SNAPSHOT')
+
+
+def _total_desde_valoracion(precio, cantidad, fuente):
+    """Convierte una fila de 'valoraciones' en el valor total de la posicion.
+
+    El precio es unitario salvo que la fuente diga lo contrario o que el activo
+    no tenga lotes (liquidez, pensiones, carteras robo, pools), en cuyo caso el
+    precio YA es el total."""
+    if fuente in FUENTES_VALOR_TOTAL:
+        return precio
+    if cantidad and cantidad > 0.0001:
+        return precio * cantidad
+    return precio
+
+
 def valor_actual_activo(c, activo_id):
     """Devuelve el valor actual en EUR de un activo: ultimo precio conocido x cantidad,
     o el precio directamente si el activo no tiene cantidad real (ej. MyInvestor Robo,
@@ -220,16 +244,16 @@ def valor_activo_en_fecha(c, activo_id, fecha):
     """Como valor_actual_activo, pero usando el ultimo precio conocido en o
     antes de 'fecha' en vez del mas reciente sin mas."""
     precio_row = c.execute('''
-        SELECT precio FROM valoraciones WHERE activo_id=? AND fecha<=? ORDER BY fecha DESC LIMIT 1
+        SELECT precio, fuente FROM valoraciones WHERE activo_id=? AND fecha<=? ORDER BY fecha DESC LIMIT 1
     ''', (activo_id, fecha)).fetchone()
     if not precio_row:
         return None
-    precio = precio_row[0]
+    precio, fuente = precio_row
 
     cantidad = c.execute(
         'SELECT SUM(cantidad_disponible) FROM lotes_fifo WHERE activo_id=?', (activo_id,)
     ).fetchone()[0]
-    valor = precio * cantidad if cantidad and cantidad > 0.0001 else precio
+    valor = _total_desde_valoracion(precio, cantidad, fuente)
 
     porcentaje = c.execute(
         "SELECT porcentaje_propiedad FROM activos WHERE id=?", (activo_id,)
@@ -345,6 +369,28 @@ def calcular_rentabilidad_real_neta(c, activo_id, fecha_corte, fecha_inicio_peri
     if valor is None:
         return None
 
+    # ── La foto puede ser anterior a los movimientos de SU MISMO DIA ──
+    # Ni las valoraciones ni los movimientos llevan hora, asi que si el mismo
+    # dia hay una valoracion y una entrada de dinero no se puede saber por los
+    # datos cual fue primero. Pero se puede DETECTAR cuando la foto es la de
+    # antes: si el valor se parece al capital SIN ese flujo (menos de un 10 %
+    # de diferencia) y en cambio queda muy por debajo del capital CON el flujo,
+    # entonces el dinero todavia no estaba dentro cuando se tomo la foto.
+    #
+    # Sin esto, Mintos Core Loans marcaba -19,49 % el 2026-04-28: ese dia
+    # entraron 10.000 EUR y salieron 5.000, la foto (20.128,64) era de antes, y
+    # se comparaba contra un capital de 25.000 que aun no habia llegado. Al mes
+    # siguiente volvia a +0,79 %. No era una perdida: era una foto a destiempo.
+    flujo_mismo_dia = sum(imp for f, imp in flujos if f == fecha_corte)
+    aviso = None
+    if flujo_mismo_dia > 0 and valor < capital_ajustado:
+        capital_sin = capital_ajustado - flujo_mismo_dia
+        if capital_sin > 0 and abs(valor - capital_sin) / capital_sin < 0.10:
+            aviso = (f"la foto del {fecha_corte} es anterior a los "
+                     f"{flujo_mismo_dia:,.2f} EUR que entraron ese mismo dia; "
+                     f"se calcula sobre el capital previo")
+            capital_ajustado = capital_sin
+
     ganancia_real = valor - capital_ajustado
     ganancia_neta = ganancia_real * (1 - tasa) if ganancia_real > 0 else ganancia_real
     rentabilidad_pct = ganancia_neta / capital_ajustado * 100
@@ -354,6 +400,7 @@ def calcular_rentabilidad_real_neta(c, activo_id, fecha_corte, fecha_inicio_peri
         'capital_ajustado': capital_ajustado,
         'ganancia_neta': ganancia_neta,
         'rentabilidad_pct': rentabilidad_pct,
+        'aviso': aviso,
     }
 
 
@@ -405,17 +452,14 @@ def evolucion_patrimonio_mensual():
         total = 0.0
         for (activo_id,) in activos:
             precio = c.execute('''
-                SELECT precio FROM valoraciones WHERE activo_id=? AND fecha<=? ORDER BY fecha DESC LIMIT 1
+                SELECT precio, fuente FROM valoraciones WHERE activo_id=? AND fecha<=? ORDER BY fecha DESC LIMIT 1
             ''', (activo_id, fecha)).fetchone()
             if not precio:
                 continue
             cantidad = c.execute('''
                 SELECT SUM(cantidad_disponible) FROM lotes_fifo WHERE activo_id=?
             ''', (activo_id,)).fetchone()[0]
-            if cantidad and cantidad > 0.0001:
-                total += precio[0] * cantidad
-            else:
-                total += precio[0]
+            total += _total_desde_valoracion(precio[0], cantidad, precio[1])
         resultado.append((fecha, total))
 
     conn.close()
@@ -698,14 +742,14 @@ def historico_valoraciones_activo(activo_id, dias=365):
     cantidad = c.execute(
         "SELECT SUM(cantidad_disponible) FROM lotes_fifo WHERE activo_id=?", (activo_id,)
     ).fetchone()[0]
-    factor = cantidad if cantidad is not None else 1.0
     resultado = c.execute("""
-        SELECT fecha, precio FROM valoraciones
+        SELECT fecha, precio, fuente FROM valoraciones
         WHERE activo_id=? AND fecha >= date('now', ?)
         ORDER BY fecha ASC
     """, (activo_id, f'-{dias} days')).fetchall()
     conn.close()
-    return [(fecha, precio * factor) for fecha, precio in resultado]
+    return [(fecha, _total_desde_valoracion(precio, cantidad, fuente))
+            for fecha, precio, fuente in resultado]
 
 
 ORDEN_ESTRATEGIA = {'HOLD': 0, 'STAKING': 1, 'YIELD_FARMING': 2, 'PERPS': 3}
