@@ -15,12 +15,30 @@ Los lectores toleran que Excel guarde el CSV con ';' y/o con BOM.
 """
 import os
 import csv
+import json
 import unicodedata
 
 RAIZ = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 CSV_OBJ = os.path.join(RAIZ, 'imports', 'Objetivos', 'objetivo_distribucion.csv')
 CSV_SEC = os.path.join(RAIZ, 'imports', 'Objetivos', 'objetivo_sectores.csv')
 CSV_RF = os.path.join(RAIZ, 'imports', 'Objetivos', 'rf_bloques.csv')
+# EL NIVEL 1 YA NO SALE DEL CSV: LO MANDA EL PLAN (01-10-2026)
+# ------------------------------------------------------------
+# El CSV traia un 65/12/6/5/5/4/2/1 fijo. El plan de independencia financiera NO tiene un
+# objetivo fijo: tiene una SENDA, porque entre hoy y 2030 hay que construir el colchon del
+# que se vive el puente, y la bolsa pasa del 67 % al 52 % mientras la renta fija va del 16 %
+# al 33,5 %. Con el objetivo estatico, esta pestana le decia «compra 22.962 EUR de bolsa»
+# donde el plan dice 59.566, y le pedia comprar crowdlending (Inversiones Alternativas)
+# justo del bloque que la senda baja del 4,6 % al 1,5 %.
+#
+# Asi que los pesos de NIVEL 1 vienen de exports/objetivo_vigente.json, que escribe el libro
+# del plan y NO se teclea. Los SUBNIVELES siguen en el CSV, que es donde tienen sentido: al
+# modelo le da igual si la bolsa esta en acciones, fondos o ETFs.
+#
+# Si el JSON no esta —porque el plan no se ha generado todavia— se usa el CSV y se avisa en
+# el diccionario que devuelve cargar_objetivo(), para que la pantalla lo pueda decir en vez
+# de ensenar un objetivo viejo como si fuera el bueno.
+JSON_OBJ = os.path.join(RAIZ, 'exports', 'objetivo_vigente.json')
 
 ESCENARIOS = [('crecimiento', 'Crecimiento'), ('estable', 'Estable'),
               ('recesion', 'Recesión / estanflación')]
@@ -126,9 +144,66 @@ def cargar_objetivo():
             cache[ruta] = (pa * p / 100.0) if pa is not None else None
         return cache[ruta]
 
+    # ── el nivel 1 lo manda el plan ────────────────────────────────────────────────────
+    plan, origen = _objetivo_del_plan(), 'csv'
+    if plan:
+        origen = f"plan {plan.get('ano_vigente')}"
+        for ruta, n in nodos.items():
+            if n['padre'] is None and ruta in plan['pilares']:
+                n['peso_pct'] = plan['pilares'][ruta]
+                n['nota'] = (f"Lo fija la senda del plan para {plan.get('ano_vigente')}. "
+                             + (n['nota'] or '')).strip()
+        # EL REPARTO DENTRO DE LA RENTA FIJA TAMBIEN LO MANDA LA SENDA. No es una
+        # preferencia: el bloque indexado es el colchon del que se vive el puente y tiene
+        # que ir del 10,8 % de la renta fija en 2026 al 82,1 % en 2030. Tecleado a mano
+        # habia un 36 % que no es el de ningun ano. Lo que SIGUE siendo suyo es como parte
+        # el trozo nominal entre conservador y rentabilidad: eso el modelo no lo mira.
+        idx, nom = plan.get('rf_indexada'), plan.get('rf_nominal')
+        if idx is not None and nom is not None:
+            hijos_rf = [r for r in nodos if nodos[r]['padre'] == 'RENTA_FIJA']
+            r_idx = next((r for r in hijos_rf if 'INDEXADA' in r), None)
+            r_nom = [r for r in hijos_rf if r != r_idx]
+            if r_idx and r_nom:
+                nodos[r_idx]['peso_pct'] = idx
+                nodos[r_idx]['nota'] = (f"Lo fija la senda: el colchón del puente. "
+                                        + (nodos[r_idx]['nota'] or '')).strip()
+                # el trozo nominal se reparte entre los demas hijos CONSERVANDO su
+                # proporcion relativa, que esa si es decision suya
+                viejo = sum(nodos[r]['peso_pct'] or 0 for r in r_nom) or 1
+                for r in r_nom:
+                    nodos[r]['peso_pct'] = nom * (nodos[r]['peso_pct'] or 0) / viejo
+
+        # un pilar del plan que el CSV no tiene (no deberia pasar, pero si pasa no se pierde)
+        for clave, peso in plan['pilares'].items():
+            if clave not in nodos:
+                nodos[clave] = {'ruta': clave, 'etiqueta': clave.replace('_', ' ').title(),
+                                'peso_pct': peso, 'nota': 'Pilar del plan que no está en el '
+                                'CSV de subniveles.', 'padre': None, 'hijos': []}
+        # y uno del CSV que el plan no tiene -> a cero: no esta en el perimetro del plan
+        for ruta, n in nodos.items():
+            if n['padre'] is None and ruta not in plan['pilares']:
+                n['peso_pct'] = 0.0
+                n['nota'] = ("Fuera del perímetro del plan: no entra en el objetivo. "
+                             + (n['nota'] or '')).strip()
+
     for ruta, n in nodos.items():
         n['peso_abs'] = peso_abs(ruta)
+        n['origen_nivel1'] = origen
     return nodos
+
+
+def _objetivo_del_plan():
+    """Pesos de nivel 1 que escribe el libro del plan, o None si todavia no existen."""
+    try:
+        with open(JSON_OBJ, encoding='utf-8') as f:
+            d = json.load(f)
+        ano = d.get('ano_vigente')
+        x = d['anos'][ano]
+        return {'pilares': x['pilares'], 'ano_vigente': ano, 'generado': d.get('generado'),
+                'rf_indexada': x.get('rf_indexada'), 'rf_nominal': x.get('rf_nominal'),
+                'destino_ahorro': x.get('destino_ahorro')}
+    except (FileNotFoundError, KeyError, ValueError):
+        return None
 
 
 def pilares_objetivo():
@@ -151,10 +226,29 @@ def hijos_objetivo(ruta):
     return out
 
 
+CSV_BONOS = os.path.join(RAIZ, 'imports', 'clasificacion', 'bonos.csv')
+
+
 def cargar_rf_bloques():
-    """{isin: 'conservador'|'rentabilidad'} para repartir la renta fija por bloque."""
+    """{isin: 'conservador'|'rentabilidad'|'indexada'} para repartir la renta fija.
+
+    EL BLOQUE «INDEXADA» NO SE TECLEA: sale de la columna `ligado` de
+    imports/clasificacion/bonos.csv, que es donde ya vive todo lo demas de cada bono y lo
+    que usa el plan. Antes habia que escribirlo tambien en rf_bloques.csv y nadie lo hizo:
+    el OAT€i FR001400JI88 estaba marcado ligado=1 en un fichero y no aparecia en el otro,
+    asi que el bloque indexada -el 36 % de la renta fija objetivo- salia VACIO para siempre
+    y nadie lo notaba. Lo cazo Jose el 01-10-2026 comparando las dos pantallas.
+    rf_bloques.csv sigue mandando si alguien quiere forzar un caso concreto.
+    """
     res = {}
-    for r in _filas_csv(CSV_RF):
+    try:
+        for r in _filas_csv(CSV_BONOS):
+            isin = (r.get('isin') or '').strip()
+            if isin and (r.get('ligado') or '').strip() in ('1', 'si', 'sí', 'true', 'True'):
+                res[isin] = 'indexada'
+    except (FileNotFoundError, OSError):
+        pass
+    for r in _filas_csv(CSV_RF):          # el override manual manda sobre lo anterior
         isin = (r.get('isin') or '').strip()
         bloque = (r.get('bloque') or '').strip().lower()
         if isin and bloque:
@@ -178,12 +272,36 @@ def comparativa_pilares():
     """Nivel 1. Devuelve (filas, total_eur). Cada fila:
     {clave, etiqueta, obj, act_pct, act_eur, desv (pp), ajuste_eur}."""
     from datos import consultas
-    distrib, total = consultas.distribucion_por_pilar()
+    # mirar_dentro=True: el plan de pensiones se reparte por lo que lleva DENTRO, no por su
+    # etiqueta. Sin esto, esta pantalla cree que hay 63.486 EUR de bolsa que en un 57 % son
+    # renta fija, y pide comprar 47.000 EUR menos de bolsa de los que hacen falta.
+    distrib, total = consultas.distribucion_por_pilar(mirar_dentro=True)
     actual = {p: (v, pct) for p, v, pct in distrib}
+
+    # EL PERIMETRO TIENE QUE SER EL MISMO EN LAS DOS COLUMNAS. El objetivo del plan esta
+    # calculado sobre el patrimonio del PLAN, que es el del cuadro de mando MENOS los
+    # inmuebles: no financian la jubilacion, no dan renta y no se piensan vender. Si se
+    # comparase contra el total con inmuebles dentro, esta pantalla ensenaria «Inmobiliario:
+    # objetivo 0 %, actual 4,2 %, ajuste -37.000 EUR», que se lee como «vende Salamanca», y
+    # ademas inflaria el hueco de la bolsa en 30.000 EUR. Asi que cuando el objetivo lo manda
+    # el plan, el inmobiliario sale de la comparacion y del denominador, y se dice.
+    plan = _objetivo_del_plan()
+    fuera = []
+    if plan:
+        inm_eur = actual.get('INMOBILIARIO', (0.0, 0.0))[0]
+        if inm_eur:
+            total -= inm_eur
+            fuera.append(('INMOBILIARIO', inm_eur))
+            actual.pop('INMOBILIARIO', None)
+
     filas = []
     for clave, etiqueta, obj in pilares_objetivo():
+        if any(clave == f[0] for f in fuera):
+            continue
         obj = obj or 0.0
-        act_eur, act_pct = actual.get(clave, (0.0, 0.0))
+        act_eur = actual.get(clave, (0.0, 0.0))[0]
+        # el % se recalcula sobre el total COMPARABLE, no sobre el que venia del reparto
+        act_pct = 100.0 * act_eur / total if total else 0.0
         filas.append({
             'clave': clave, 'etiqueta': etiqueta, 'obj': obj,
             'act_pct': act_pct, 'act_eur': act_eur,

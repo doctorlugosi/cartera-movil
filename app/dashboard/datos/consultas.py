@@ -495,7 +495,70 @@ def historico_patrimonio():
     return [(f, v) for f, v, _ in
             (mejor_por_mes[m] for m in sorted(mejor_por_mes))]
 
-def distribucion_por_pilar():
+
+# Que cuenta como inmueble: el pilar INMOBILIARIO, y como respaldo el tipo INMUEBLE cuando
+# el pilar falta en la base. Es EL MISMO criterio que la funcion bloque() de
+# scripts/exportar_plan.py, y ese script comprueba en cada ejecucion que las dos cuentas
+# coinciden al centimo, para que no puedan separarse en silencio.
+SQL_INMUEBLES = ("SELECT id FROM activos WHERE activo=1 AND "
+                 "(pilar='INMOBILIARIO' OR (COALESCE(pilar,'')='' AND tipo='INMUEBLE'))")
+
+
+def valor_inmuebles(c, fecha=None):
+    """Valor de los inmuebles —la parte que es suya— a una fecha, o el de hoy si no se da.
+
+    POR QUE EXISTE. El plan de independencia financiera trabaja con un perimetro distinto
+    del cuadro de mando: patrimonio del plan = patrimonio total MENOS los inmuebles. No
+    dan renta, no se piensan vender y no financian el puente, asi que la senda no los
+    cuenta. Pero la FOTO mensual del patrimonio salia del total del cuadro de mando, con
+    los inmuebles dentro, y al restarle el objetivo daba una desviacion de 37.000 EUR que
+    no era una desviacion: eran los tres inmuebles de Salamanca al 1/14 que le toca.
+    Lo cazo Jose el 29-09-2026 mirando la fila de septiembre.
+
+    No duplica ninguna regla de valoracion: llama a valor_activo_en_fecha(), que ya aplica
+    el porcentaje_propiedad de la copropiedad.
+
+    Devuelve (valor, n_sin_valoracion). Si algun inmueble no tiene valoracion en o antes de
+    esa fecha se cuenta aparte y NO se da por cero: quien llame decide, pero con el dato a
+    la vista. Un cero inventado restaria de menos y nadie lo notaria.
+    """
+    total, sin_dato = 0.0, 0
+    for (activo_id,) in c.execute(SQL_INMUEBLES).fetchall():
+        v = (valor_activo_en_fecha(c, activo_id, fecha) if fecha
+             else valor_actual_activo(c, activo_id))
+        if v is None:
+            sin_dato += 1
+        else:
+            total += v
+    return total, sin_dato
+
+
+# DE QUE ESTA HECHO EL PLAN DE PENSIONES, que no es lo que dice su etiqueta.
+# El P.P. Repsol Materials tiene pilar='RENTA_VARIABLE' en la base de datos, asi que contado
+# a pelo mete sus 63.486 EUR enteros en bolsa. Dentro lleva un 57 % de renta fija. Contado a
+# pelo, el cuadro de mando decia 62,4 % de bolsa cuando lo real es el 57,0 %, y la pestana
+# Analisis pedia comprar 22.962 EUR de bolsa donde el plan pide 59.566: 47.000 EUR de
+# diferencia por una etiqueta. Lo cazo Jose el 01-10-2026 comparando las dos pantallas.
+#
+# Esta era la UNICA copia de esta regla que quedaba fuera de aqui: vivia en
+# scripts/exportar_plan.py como REPARTO_PLAN. Ahora vive donde viven las demas reglas de
+# valoracion y exportar_plan.py la importa.
+REPARTO_PENSIONES = {"RENTA_FIJA": 0.57, "RENTA_VARIABLE": 0.26,
+                     "INVERSIONES_ALTERNATIVAS": 0.13, "LIQUIDEZ": 0.04}
+
+
+def distribucion_por_pilar(mirar_dentro=False):
+    """Reparto del patrimonio por pilar.
+
+    mirar_dentro=True reparte los planes de pensiones por lo que llevan DENTRO
+    (REPARTO_PENSIONES) en vez de por su etiqueta. Lo usa la pestana Analisis, que es la que
+    dice donde meter el dinero, y por eso necesita saber de que esta hecha la cartera.
+
+    Por defecto va a False y la pestana Distribucion no cambia: alli el detalle de cada pilar
+    lista los activos uno a uno, y un activo partido en cuatro no se puede listar en cuatro
+    sitios sin que el detalle deje de sumar el total. Son dos preguntas distintas a proposito:
+    Distribucion dice DONDE ESTA ETIQUETADO tu dinero y Analisis DE QUE ESTA HECHO.
+    """
     conn = conectar()
     c = conn.cursor()
     activos = c.execute("SELECT id, pilar, tipo FROM activos WHERE activo=1").fetchall()
@@ -503,6 +566,12 @@ def distribucion_por_pilar():
     for activo_id, pilar, tipo in activos:
         clave = pilar if pilar else ('LIQUIDEZ' if tipo == 'LIQUIDEZ' else None)
         if not clave:
+            continue
+        if mirar_dentro and tipo == 'PENSIONES':
+            v = valor_actual_activo(c, activo_id)
+            if v is not None:
+                for k, w in REPARTO_PENSIONES.items():
+                    por_pilar[k] = por_pilar.get(k, 0.0) + v * w
             continue
         valor = valor_actual_activo(c, activo_id)
         if valor is None:
