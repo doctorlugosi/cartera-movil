@@ -2,6 +2,7 @@ import streamlit as st
 import plotly.graph_objects as go
 import sys
 import os
+from html import escape
 
 RUTA_DASHBOARD = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if RUTA_DASHBOARD not in sys.path:
@@ -110,6 +111,13 @@ def _vista_historico_plataforma(broker):
 def mostrar():
     total, desglose = consultas.patrimonio_total()
     efectivo = consultas.efectivo_por_plataforma()
+    # Posiciones cuyo valor no es de hoy (sin precio = cuentan CERO): van en rojo en su
+    # tarjeta (10-10-2026). Una plataforma sin NINGUN precio ni siquiera sale en el
+    # desglose (suma cero), asi que se anade a 0 para que su tarjeta aparezca.
+    sin_precio = consultas.posiciones_sin_precio_al_dia()
+    for broker_sp in sin_precio:
+        if broker_sp not in dict(desglose):
+            desglose.append((broker_sp, 0.0))
     historico = consultas.historico_patrimonio()
     n_puntos = len(historico)
 
@@ -227,6 +235,17 @@ def mostrar():
                 else:
                     texto_ef = "Sin efectivo"
 
+                avisos = sin_precio.get(broker, [])
+                html_aviso = ""
+                if avisos:
+                    texto_av = avisos[0] + (f" (+{len(avisos) - 1})" if len(avisos) > 1 else "")
+                    # el motivo va delante y el texto puede partirse en dos lineas: es
+                    # una alarma, mejor una tarjeta mas alta que un aviso cortado
+                    html_aviso = (
+                        "<p style='font-size:11px;color:#F6465D;margin:2px 0 0;line-height:1.15;'>"
+                        f"&#9888; {escape(texto_av)}</p>"
+                    )
+
                 html = (
                     "<div style='background-color:#1E2329;border-radius:7px;"
                     "padding:8px 11px;margin-bottom:5px;'>"
@@ -235,6 +254,7 @@ def mostrar():
                     f"<p style='font-size:16px;color:#EAECEF;margin:0 0 2px;"
                     f"font-weight:700;line-height:1.1;'>{formato_eur(valor)} &#8364;</p>"
                     f"<p style='font-size:11px;color:#848E9C;margin:0;line-height:1.1;'>{texto_ef}</p>"
+                    f"{html_aviso}"
                     "</div>"
                 )
                 clave = broker.replace(' ', '_').replace('/', '_')

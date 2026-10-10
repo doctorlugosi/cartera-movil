@@ -112,6 +112,55 @@ def patrimonio_total():
     return total, desglose
 
 
+def posiciones_sin_precio_al_dia(dias=7, minimo_eur=1.0):
+    """{broker: [aviso, ...]} de las POSICIONES ABIERTAS cuyo valor en la tarjeta no es
+    de hoy. El cuadro de mando lo pinta en rojo en la tarjeta de cada plataforma.
+
+    POR QUE (10-10-2026). Un activo sin precio no da ningun error: valor_actual_activo()
+    devuelve None y la suma lo cuenta como CERO, en silencio. Paso cinco veces en quince
+    dias (Bestinver, los bonos a la par, el fondo indexado, Sanofi...) y todas se
+    descubrieron por casualidad. Ahora sale donde se mira, sin script de verificacion.
+
+    Posicion abierta = activo vivo con unidades en lotes_fifo. Se avisa si:
+      - no tiene NINGUNA valoracion (cuenta cero), o
+      - su ultima valoracion va mas de `dias` dias por detras de la mas reciente de la
+        base, es decir, de la ultima pasada de la cadena (si no se actualiza en un mes,
+        no se pone todo en rojo), y vale al menos `minimo_eur` (un CVR sin mercado de
+        0,35 EUR no merece una alarma para siempre).
+    Las cuentas sin lotes (efectivo, pensiones, inmuebles, carteras) no entran: su valor
+    se teclea o sale de un extracto, no lo trae un mercado.
+    """
+    from datetime import date
+    conn = conectar()
+    c = conn.cursor()
+    ref = c.execute("SELECT MAX(fecha) FROM valoraciones").fetchone()[0]
+    filas = c.execute('''
+        SELECT a.id, a.broker, a.nombre,
+               (SELECT SUM(cantidad_disponible) FROM lotes_fifo l WHERE l.activo_id = a.id)
+        FROM activos a WHERE a.activo = 1
+    ''').fetchall()
+    avisos = {}
+    for aid, broker, nombre, uds in filas:
+        if not uds or uds <= 0.0001:
+            continue
+        corto = nombre.split(' - ', 1)[-1]
+        ult = c.execute("SELECT fecha, precio, fuente FROM valoraciones WHERE activo_id=? "
+                        "ORDER BY fecha DESC LIMIT 1", (aid,)).fetchone()
+        if not ult:
+            avisos.setdefault(broker, []).append(f"Sin precio: {corto}")
+            continue
+        fecha, precio, fuente = ult
+        d, d_ref = date.fromisoformat(fecha), date.fromisoformat(ref)
+        if (d_ref - d).days <= dias:
+            continue
+        if _total_desde_valoracion(precio, uds, fuente) < minimo_eur:
+            continue
+        cuando = d.strftime('%d-%m') if d.year == d_ref.year else d.strftime('%d-%m-%Y')
+        avisos.setdefault(broker, []).append(f"Precio del {cuando}: {corto}")
+    conn.close()
+    return avisos
+
+
 def distribucion_por_divisa():
     """Devuelve list of (divisa, valor_eur, porcentaje) segun la divisa nativa
     de cada activo (columna 'divisa' de activos), ordenada de mayor a menor
