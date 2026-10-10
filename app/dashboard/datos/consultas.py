@@ -14,17 +14,36 @@ def conectar():
     return sqlite3.connect(DB_PATH)
 
 
-def _a_eur(c, activo_id, valor):
-    """Convierte un importe en la divisa nativa del activo a EUR (para agregar).
+def _a_eur(c, activo_id, valor, fecha=None):
+    """Convierte un importe en la divisa nativa del activo a EUR (para agregar), con el
+    tipo del BCE de `fecha` o el ultimo anterior (o el mas reciente, si no hay fecha).
     tipo_cambio de divisas_fx: price_divisa = price_eur * tipo_cambio."""
     divisa = c.execute("SELECT divisa FROM activos WHERE id=?", (activo_id,)).fetchone()[0]
     if not divisa or divisa == 'EUR':
         return valor
-    fila = c.execute(
-        "SELECT tipo_cambio FROM divisas_fx WHERE par=? ORDER BY fecha DESC LIMIT 1",
-        (f'{divisa}/EUR',)).fetchone()
+    if fecha is None:
+        fila = c.execute(
+            "SELECT tipo_cambio FROM divisas_fx WHERE par=? ORDER BY fecha DESC LIMIT 1",
+            (f'{divisa}/EUR',)).fetchone()
+    else:
+        fila = c.execute(
+            "SELECT tipo_cambio FROM divisas_fx WHERE par=? AND fecha<=? ORDER BY fecha DESC LIMIT 1",
+            (f'{divisa}/EUR', fecha)).fetchone()
     return valor / fila[0] if fila and fila[0] else valor
 
+
+# ============================================================================
+# EL VALOR DE UN ACTIVO: UNA SOLA REGLA (10-10-2026)
+# ============================================================================
+# Hasta el 10-10-2026 "precio x cantidad" estaba escrito CUATRO veces en este fichero
+# y solo una estaba bien. La de las graficas por plataforma y la rentabilidad real
+# neta (valor_activo_en_fecha) con 0 unidades devolvia el precio de UNA unidad como
+# si fuera el total (el BTC transferido de eToro sumaba 56.025 EUR en su grafica),
+# no convertia la divisa (el efectivo USD de eToro contaba como euros) y usaba las
+# unidades de HOY en fechas pasadas (lo vendido desaparecia tambien hacia atras).
+#
+# Ahora todo pasa por valor_activo(). valor_actual_activo() y valor_activo_en_fecha()
+# son solo sus dos nombres de siempre, para no tocar a quien los llama.
 
 # Fuentes de 'valoraciones' cuyo campo 'precio' NO es un precio unitario sino el
 # VALOR TOTAL ya calculado de la posicion. Hay que respetarlas aunque el activo
@@ -36,57 +55,117 @@ def _a_eur(c, activo_id, valor):
 # en junio de 2026 y Bestinfond rendia un +14.683 %.
 FUENTES_VALOR_TOTAL = ('MANUAL_TOTAL', 'SNAPSHOT')
 
-
-def _total_desde_valoracion(precio, cantidad, fuente):
-    """Convierte una fila de 'valoraciones' en el valor total de la posicion.
-
-    El precio es unitario salvo que la fuente diga lo contrario o que el activo
-    no tenga lotes (liquidez, pensiones, carteras robo, pools), en cuyo caso el
-    precio YA es el total."""
-    if fuente in FUENTES_VALOR_TOTAL:
-        return precio
-    if cantidad and cantidad > 0.0001:
-        return precio * cantidad
-    return precio
+# Que movimientos meten o sacan unidades. Son EXACTAMENTE los que usa
+# scripts/motor_fifo.py para construir lotes_fifo, que es quien manda sobre cuantas
+# unidades hay hoy. Si alli cambian, aqui tambien.
+ENTRADAS_UNIDADES = ('COMPRA', 'TRASPASO_ENTRADA', 'STAKING')
+SALIDAS_UNIDADES = ('VENTA', 'TRASPASO_SALIDA')
 
 
-def valor_actual_activo(c, activo_id):
-    """Devuelve el valor actual en EUR de un activo: ultimo precio conocido x cantidad,
-    o el precio directamente si el activo no tiene cantidad real (ej. MyInvestor Robo,
-    cuentas de liquidez/pensiones tratadas como 'precio = valor total').
-    Si el activo tiene porcentaje_propiedad (inmuebles en copropiedad), el valor
-    se pondera por ese porcentaje sobre la tasacion total."""
-    ultimo_precio = c.execute('''
-        SELECT precio FROM valoraciones WHERE activo_id=? ORDER BY fecha DESC LIMIT 1
-    ''', (activo_id,)).fetchone()
-    if not ultimo_precio:
-        return None
-    precio = ultimo_precio[0]
+def _splits(c, activo_id):
+    """[(fecha, ratio)] de los SPLIT del activo, leidos igual que motor_fifo.get_splits."""
+    res = []
+    for fecha, notas in c.execute(
+            "SELECT fecha_operacion, notas FROM movimientos WHERE activo_id=? AND tipo_operacion='SPLIT' "
+            "ORDER BY fecha_operacion", (activo_id,)).fetchall():
+        ratio = 1.0
+        if notas and 'ratio:' in notas:
+            try:
+                ratio = float(notas.split('ratio:')[1].split()[0].split(',')[0])
+            except (ValueError, IndexError):
+                ratio = 1.0
+        res.append((fecha, ratio))
+    return res
 
-    cantidad = c.execute('''
-        SELECT SUM(cantidad_disponible) FROM lotes_fifo WHERE activo_id=?
-    ''', (activo_id,)).fetchone()[0]
 
-    if cantidad is None:
-        # Sin lotes en absoluto (liquidez, pensiones, MyInvestor Robo) -> el precio YA es
-        # el valor total, en la DIVISA NATIVA del activo (p.ej. la liquidez de eToro se
-        # mete en USD). Se convierte a EUR para agregar (el resto de valoraciones ya
-        # estan en EUR). Para EUR el factor es 1.
-        valor = _a_eur(c, activo_id, precio)
+def unidades_en_fecha(c, activo_id, fecha=None):
+    """(tiene_lotes, unidades) del activo hoy o al cierre de `fecha`.
+
+    Hoy es lo que dice lotes_fifo. En una fecha pasada se parte de hoy y se deshace
+    lo que se movio DESPUES: se restan las entradas y se suman las salidas, con las
+    reglas de motor_fifo (una entrada cuenta con los splits posteriores, igual que su
+    lote). Si hubo un split despues de `fecha`, se devuelven las unidades de entonces.
+    Un activo sin lotes (efectivo, pensiones, carteras, inmuebles) devuelve
+    (False, None): su valoracion ya es el total.
+    """
+    n, uds = c.execute("SELECT COUNT(*), SUM(cantidad_disponible) FROM lotes_fifo WHERE activo_id=?",
+                       (activo_id,)).fetchone()
+    if not n:
+        return False, None
+    uds = uds or 0.0
+    if fecha is None:
+        return True, uds
+    splits = _splits(c, activo_id)
+
+    def ratio_despues(f):
+        r = 1.0
+        for fs, ratio in splits:
+            if fs > f:
+                r *= ratio
+        return r
+
+    tipos = ENTRADAS_UNIDADES + SALIDAS_UNIDADES
+    for f, tipo, cant in c.execute(
+            "SELECT fecha_operacion, tipo_operacion, num_participaciones FROM movimientos "
+            "WHERE activo_id=? AND fecha_operacion>? AND num_participaciones > 0 "
+            f"AND tipo_operacion IN ({','.join('?' * len(tipos))})",
+            (activo_id, fecha, *tipos)).fetchall():
+        if tipo in ENTRADAS_UNIDADES:
+            uds -= cant * ratio_despues(f)
+        else:
+            uds += cant
+    uds = uds / ratio_despues(fecha)
+    return True, max(uds, 0.0)
+
+
+def valor_activo(c, activo_id, fecha=None):
+    """Valor en EUR de un activo hoy (fecha=None) o al cierre de `fecha`. LA regla:
+
+      - precio: la ultima valoracion en o antes de la fecha;
+      - con lotes: precio x unidades de ESE dia (0 unidades -> 0, nunca el precio a
+        secas), salvo que la valoracion sea ya un total (FUENTES_VALOR_TOTAL);
+      - sin lotes (efectivo, pensiones, carteras robo, pools): la valoracion ES el
+        total, en la divisa del activo, y se pasa a euros con el tipo de ESE dia;
+      - inmuebles en copropiedad: x porcentaje_propiedad.
+
+    Devuelve None si no hay ninguna valoracion en o antes de la fecha.
+    """
+    if fecha is None:
+        fila = c.execute("SELECT precio, fuente FROM valoraciones WHERE activo_id=? "
+                         "ORDER BY fecha DESC LIMIT 1", (activo_id,)).fetchone()
     else:
-        # Tiene lotes reales (aunque la cantidad actual sea 0, ej. posicion
-        # vendida por completo) -> el valor es precio x cantidad, nunca el
-        # precio a secas (evita mostrar el ultimo precio por accion como si
-        # fuera el valor total de una posicion ya cerrada a 0 unidades)
-        valor = precio * cantidad
+        fila = c.execute("SELECT precio, fuente FROM valoraciones WHERE activo_id=? AND fecha<=? "
+                         "ORDER BY fecha DESC LIMIT 1", (activo_id, fecha)).fetchone()
+    if not fila:
+        return None
+    precio, fuente = fila
+
+    tiene_lotes, uds = unidades_en_fecha(c, activo_id, fecha)
+    if not tiene_lotes:
+        valor = _a_eur(c, activo_id, precio, fecha)
+    elif fuente in FUENTES_VALOR_TOTAL:
+        valor = precio
+    else:
+        valor = precio * uds
 
     porcentaje = c.execute(
         "SELECT porcentaje_propiedad FROM activos WHERE id=?", (activo_id,)
     ).fetchone()[0]
     if porcentaje:
         valor = valor * (porcentaje / 100)
-
     return valor
+
+
+def valor_actual_activo(c, activo_id):
+    """El valor de hoy: valor_activo() sin fecha. Se conserva el nombre porque lo usan
+    exportar_plan.py, exportar_fiscal.py, objetivo.py y media pagina del dashboard."""
+    return valor_activo(c, activo_id)
+
+
+def valor_activo_en_fecha(c, activo_id, fecha):
+    """El valor al cierre de `fecha`: valor_activo() con fecha. Se conserva el nombre
+    por quien lo llama (grafica por plataforma, rentabilidad real neta, inmuebles)."""
+    return valor_activo(c, activo_id, fecha)
 
 
 def patrimonio_total():
@@ -153,7 +232,7 @@ def posiciones_sin_precio_al_dia(dias=7, minimo_eur=1.0):
         d, d_ref = date.fromisoformat(fecha), date.fromisoformat(ref)
         if (d_ref - d).days <= dias:
             continue
-        if _total_desde_valoracion(precio, uds, fuente) < minimo_eur:
+        if (valor_activo(c, aid) or 0.0) < minimo_eur:
             continue
         cuando = d.strftime('%d-%m') if d.year == d_ref.year else d.strftime('%d-%m-%Y')
         avisos.setdefault(broker, []).append(f"Precio del {cuando}: {corto}")
@@ -287,29 +366,6 @@ def historico_mensual_por_broker(broker, meses=12):
 
     conn.close()
     return resultado
-
-
-def valor_activo_en_fecha(c, activo_id, fecha):
-    """Como valor_actual_activo, pero usando el ultimo precio conocido en o
-    antes de 'fecha' en vez del mas reciente sin mas."""
-    precio_row = c.execute('''
-        SELECT precio, fuente FROM valoraciones WHERE activo_id=? AND fecha<=? ORDER BY fecha DESC LIMIT 1
-    ''', (activo_id, fecha)).fetchone()
-    if not precio_row:
-        return None
-    precio, fuente = precio_row
-
-    cantidad = c.execute(
-        'SELECT SUM(cantidad_disponible) FROM lotes_fifo WHERE activo_id=?', (activo_id,)
-    ).fetchone()[0]
-    valor = _total_desde_valoracion(precio, cantidad, fuente)
-
-    porcentaje = c.execute(
-        "SELECT porcentaje_propiedad FROM activos WHERE id=?", (activo_id,)
-    ).fetchone()[0]
-    if porcentaje:
-        valor = valor * (porcentaje / 100)
-    return valor
 
 
 def _ipc_en_fecha(c, fecha):
@@ -474,45 +530,6 @@ def historico_rentabilidad_mensual(activo_id, meses=24):
     candidatas = _candidatas_mensuales([f for f, _, _ in filas])[-meses:]
     return [(fecha, por_fecha[fecha][0], por_fecha[fecha][1]) for _, (fecha, _) in candidatas]
 
-
-def evolucion_patrimonio_mensual():
-    """Devuelve lista de (fecha, valor_total_eur) usando el snapshot mas cercano
-    al dia 28 (+/- 3 dias) de cada mes, a partir del historial de valoraciones."""
-    conn = conectar()
-    c = conn.cursor()
-
-    # Todas las fechas distintas en valoraciones, agrupadas por mes
-    fechas = c.execute("SELECT DISTINCT fecha FROM valoraciones ORDER BY fecha").fetchall()
-    fechas = [f[0] for f in fechas]
-
-    candidatas_por_mes = {}
-    for fecha in fechas:
-        anio_mes = fecha[:7]  # YYYY-MM
-        dia = int(fecha[8:10])
-        if 25 <= dia <= 31:
-            distancia = abs(dia - 28)
-            if anio_mes not in candidatas_por_mes or distancia < candidatas_por_mes[anio_mes][1]:
-                candidatas_por_mes[anio_mes] = (fecha, distancia)
-
-    resultado = []
-    for anio_mes, (fecha, _) in sorted(candidatas_por_mes.items()):
-        # Para cada fecha candidata, sumar el valor de todas las valoraciones <= esa fecha (ultimo precio conocido por activo)
-        activos = c.execute("SELECT id FROM activos WHERE activo=1").fetchall()
-        total = 0.0
-        for (activo_id,) in activos:
-            precio = c.execute('''
-                SELECT precio, fuente FROM valoraciones WHERE activo_id=? AND fecha<=? ORDER BY fecha DESC LIMIT 1
-            ''', (activo_id, fecha)).fetchone()
-            if not precio:
-                continue
-            cantidad = c.execute('''
-                SELECT SUM(cantidad_disponible) FROM lotes_fifo WHERE activo_id=?
-            ''', (activo_id,)).fetchone()[0]
-            total += _total_desde_valoracion(precio[0], cantidad, precio[1])
-        resultado.append((fecha, total))
-
-    conn.close()
-    return resultado
 
 def historico_patrimonio():
     """
@@ -849,25 +866,27 @@ def rv_lista_vehiculo(vehiculo):
 
 
 def historico_valoraciones_activo(activo_id, dias=365):
-    """Devuelve [(fecha, valor_eur), ...] de los ultimos `dias` para un activo,
-    usando el historial propio de valoraciones (Yahoo Finance / scrapers).
-    valor_eur = precio guardado x cantidad ACTUAL en cartera (misma
-    simplificacion que valor_activo_en_fecha: se usa la cantidad de hoy para
-    todas las fechas pasadas, ya que no se lleva un historico de cantidad).
-    Si el activo no tiene lotes (cantidad None), el precio YA es el valor total."""
+    """Devuelve [(fecha, valor_eur), ...] de los ultimos `dias` para un activo: el valor
+    de la posicion en cada fecha con valoracion guardada, con las unidades que habia
+    ESE dia y el tipo de cambio de ESE dia (valor_activo).
+
+    Hasta el 10-10-2026 usaba las unidades de hoy en todas las fechas ("no se lleva
+    un historico de cantidad"): una venta parcial encogia el pasado entero. Ahora las
+    unidades de cada dia salen de lotes_fifo deshaciendo lo movido despues."""
     conn = conectar()
     c = conn.cursor()
-    cantidad = c.execute(
-        "SELECT SUM(cantidad_disponible) FROM lotes_fifo WHERE activo_id=?", (activo_id,)
-    ).fetchone()[0]
-    resultado = c.execute("""
-        SELECT fecha, precio, fuente FROM valoraciones
+    fechas = [f for (f,) in c.execute("""
+        SELECT DISTINCT fecha FROM valoraciones
         WHERE activo_id=? AND fecha >= date('now', ?)
         ORDER BY fecha ASC
-    """, (activo_id, f'-{dias} days')).fetchall()
+    """, (activo_id, f'-{dias} days')).fetchall()]
+    serie = []
+    for fecha in fechas:
+        valor = valor_activo(c, activo_id, fecha)
+        if valor is not None:
+            serie.append((fecha, valor))
     conn.close()
-    return [(fecha, _total_desde_valoracion(precio, cantidad, fuente))
-            for fecha, precio, fuente in resultado]
+    return serie
 
 
 ORDEN_ESTRATEGIA = {'HOLD': 0, 'STAKING': 1, 'YIELD_FARMING': 2, 'PERPS': 3}

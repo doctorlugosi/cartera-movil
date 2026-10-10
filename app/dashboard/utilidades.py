@@ -33,11 +33,20 @@ def rango_y_grafico(valores, margen=0.3):
     Rango fijo para el eje Y de un grafico de evolucion, dejando 'margen'
     (30% por defecto) del valor maximo visible por encima y por debajo, para
     que la linea no toque los bordes y se vea mejor la evolucion.
+
+    Si algun punto cae por debajo de ese suelo (una venta grande, un traspaso: eToro
+    paso de 148.000 a 85.000 EUR en 2026), el suelo baja hasta el, con un poco de
+    aire. Hasta el 10-10-2026 la linea se salia por abajo y el punto no se veia.
     """
-    maximo = max((v for v in valores if v is not None), default=0)
+    vals = [v for v in valores if v is not None]
+    maximo = max(vals, default=0)
     if maximo <= 0:
         return 0, 1
-    return maximo * (1 - margen), maximo * (1 + margen)
+    minimo = min(vals)
+    suelo = maximo * (1 - margen)
+    if minimo < suelo:
+        suelo = max(minimo - (maximo - minimo) * 0.15, 0)
+    return suelo, maximo * (1 + margen)
 
 
 def variacion_periodo(valores):

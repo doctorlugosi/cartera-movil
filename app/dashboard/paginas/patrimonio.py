@@ -43,7 +43,7 @@ def _etiqueta_mes(fecha_iso):
     return f"{MESES_ES_CORTO[mes]} {anio % 100:02d}"
 
 
-def _vista_historico_plataforma(broker):
+def _vista_historico_plataforma(broker, valor_hoy=None):
     st.markdown(
         f"<p style='color:#EAECEF;font-size:14px;font-weight:700;margin:0 0 4px;'>"
         f"{broker}</p>",
@@ -61,7 +61,10 @@ def _vista_historico_plataforma(broker):
         return
 
     n_puntos = len(historico)
-    valor_actual = historico[-1][1]
+    # La cifra grande es la de HOY, la misma de la tarjeta (10-10-2026). Antes era el
+    # ultimo punto mensual (el del dia 28): eToro ensenaba aqui 85.047 EUR del 29-09
+    # mientras su tarjeta decia 74.776.
+    valor_actual = valor_hoy if valor_hoy is not None else historico[-1][1]
     etiquetas = [_etiqueta_mes(h[0]) for h in historico]
     valores = [h[1] for h in historico]
 
@@ -219,7 +222,8 @@ def mostrar():
                 st.rerun()
 
         with st.container(key="panel_detalle"):
-            _vista_historico_plataforma(st.session_state.plataforma_sel)
+            _vista_historico_plataforma(st.session_state.plataforma_sel,
+                                        dict(desglose).get(st.session_state.plataforma_sel))
         return
 
     with st.container(key="tarjetas_plataforma"):
