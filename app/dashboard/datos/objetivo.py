@@ -96,18 +96,32 @@ def _filas_csv(path):
 NIVELES = ['Pilar', 'Categoria', 'Subcategoria', 'Detalle']
 
 
-def cargar_objetivo():
+def cargar_objetivo(con_plan=True):
     """Devuelve {ruta: nodo} con nodo = {ruta, etiqueta, peso_pct (rel. padre),
     peso_abs (% total), nota, padre, hijos:[rutas]}. La 'ruta' se compone de claves
-    internas (p.ej. 'CRIPTOACTIVOS > ETH > STAKING') derivadas de las etiquetas."""
+    internas (p.ej. 'CRIPTOACTIVOS > ETH > STAKING') derivadas de las etiquetas.
+
+    con_plan=False devuelve el arbol TAL CUAL esta en el CSV, sin poner encima los pesos de
+    la senda. Lo usa plan/crear_xlsx.py para la hoja OBJETIVO, que pone esos pesos con
+    formulas contra la hoja SENDA: asi el Plan y la pestana Analisis leen el mismo arbol con
+    el mismo codigo (12-10-2026)."""
     nodos = {}
     actual = [None, None, None, None]   # clave vigente en cada nivel
     for r in _filas_csv(CSV_OBJ):
-        nivel, etiqueta = None, None
+        # El nodo es la PRIMERA columna de nivel rellena. Si la fila trae algo tambien en una
+        # columna mas a la derecha, eso es una descripcion y va a la nota. Antes ganaba la
+        # ULTIMA: la fila «Yield farming;Pool automatizada» creaba un nodo «Pool automatizada»
+        # colgado del Staking, el yield farming se quedaba sin objetivo y su 14 % contaba
+        # dentro del staking (12-10-2026).
+        nivel, etiqueta, extra = None, None, []
         for i, col in enumerate(NIVELES):
             v = (r.get(col) or '').strip()
-            if v:
+            if not v:
+                continue
+            if nivel is None:
                 nivel, etiqueta = i, v
+            else:
+                extra.append(v)
         if nivel is None:
             continue
         actual[nivel] = _clave(etiqueta)
@@ -116,11 +130,14 @@ def cargar_objetivo():
         partes = [actual[k] for k in range(nivel + 1)]
         ruta = ' > '.join(partes)
         peso = (r.get('Peso') or '').strip().replace(',', '.')
+        nota = (r.get('Nota') or '').strip()
+        if extra:
+            nota = ' · '.join(extra + ([nota] if nota else []))
         nodos[ruta] = {
             'ruta': ruta,
             'etiqueta': etiqueta,
             'peso_pct': float(peso) if peso else None,
-            'nota': (r.get('Nota') or '').strip(),
+            'nota': nota,
             'padre': ' > '.join(partes[:-1]) if nivel > 0 else None,
             'hijos': [],
         }
@@ -145,7 +162,7 @@ def cargar_objetivo():
         return cache[ruta]
 
     # ── el nivel 1 lo manda el plan ────────────────────────────────────────────────────
-    plan, origen = _objetivo_del_plan(), 'csv'
+    plan, origen = (_objetivo_del_plan() if con_plan else None), 'csv'
     if plan:
         origen = f"plan {plan.get('ano_vigente')}"
         for ruta, n in nodos.items():
