@@ -606,11 +606,14 @@ def valor_inmuebles(c, fecha=None):
 # Analisis pedia comprar 22.962 EUR de bolsa donde el plan pide 59.566: 47.000 EUR de
 # diferencia por una etiqueta. Lo cazo Jose el 01-10-2026 comparando las dos pantallas.
 #
-# Esta era la UNICA copia de esta regla que quedaba fuera de aqui: vivia en
-# scripts/exportar_plan.py como REPARTO_PLAN. Ahora vive donde viven las demas reglas de
-# valoracion y exportar_plan.py la importa.
-REPARTO_PENSIONES = {"RENTA_FIJA": 0.57, "RENTA_VARIABLE": 0.26,
-                     "INVERSIONES_ALTERNATIVAS": 0.13, "LIQUIDEZ": 0.04}
+# Vive solo aqui: scripts/exportar_plan.py, plan/crear_xlsx.py y plan/simular.py la importan.
+#
+# EL 4 % MONETARIO DEL PLAN NO ES LIQUIDEZ (17-10-2026). Ese dinero esta dentro del plan y no
+# se puede sacar ni usar, asi que va con la renta fija: 57 % + 4 % = 61 %. Contado como
+# liquidez, la pestana Analisis y el Plan veian unos 2.500 EUR de liquidez que no existen y
+# pedian sacarlos de ahi. Lo dijo Jose al comparar las pestanas.
+REPARTO_PENSIONES = {"RENTA_FIJA": 0.61, "RENTA_VARIABLE": 0.26,
+                     "INVERSIONES_ALTERNATIVAS": 0.13}
 
 
 def distribucion_por_pilar(mirar_dentro=False):
@@ -736,6 +739,60 @@ def distribucion_rv_por_vehiculo():
     }
     conn.close()
     return resultado, total
+
+
+# LOS TRES CAPITULOS DE LA RENTA VARIABLE (18-10-2026). Jose mira su renta variable en tres
+# capitulos -acciones individuales, fondos globales y gestion activa-, cada uno con sus
+# estrategias, y su objetivo esta en la rama Renta Variable de
+# imports/Objetivos/objetivo_distribucion.csv. Aqui vive la UNICA regla de que activo va a que
+# capitulo y estrategia. La usan la pestana Analisis (objetivo.py) y la hoja RENTA_VARIABLE
+# del Plan (a traves de scripts/exportar_plan.py). Los nombres son las etiquetas del CSV.
+#   - plan de pensiones        -> Gestion activa / Pensiones (solo su parte de bolsa)
+#   - carteras gestionadas     -> Gestion activa / Roboadvisors
+#   - fondos value             -> Gestion activa / Value
+#   - acciones                 -> Acciones individuales / su estrategia en la base de datos
+#   - fondos indexados y ETF   -> Fondos globales / su exposicion. Una exposicion que ya se
+#     llame como una estrategia del CSV («Consumo básico», «Salud»...) va tal cual; las de
+#     antes se traducen aqui. El uranio cuenta como energia, que es donde lo pone la
+#     clasificacion sectorial GICS.
+EXPOSICION_A_ESTRATEGIA = {"Global desarrollado": "Desarrollados", "Emergentes": "Emergentes",
+                           "Uranio": "Energía", "IA": "Temáticas"}
+ESTRATEGIA_ACCION = {"DIVIDENDOS": "Dividendos", "CRECIMIENTO": "Crecimiento"}
+
+
+def capitulo_rv(tipo, vehiculo, composicion, exposicion_detalle, estrategia):
+    """(capitulo, estrategia) de un activo de renta variable."""
+    if tipo == 'PENSIONES':
+        return 'Gestión activa', 'Pensiones'
+    if vehiculo == 'CARTERA':
+        return 'Gestión activa', 'Roboadvisors'
+    if composicion == 'VALUE':
+        return 'Gestión activa', 'Value'
+    if tipo == 'ACCION':
+        return 'Acciones individuales', ESTRATEGIA_ACCION.get(estrategia, 'Sin estrategia')
+    exp = (exposicion_detalle or '').strip()
+    return 'Fondos globales', EXPOSICION_A_ESTRATEGIA.get(exp, exp or 'Sin clasificar')
+
+
+def rv_por_capitulo():
+    """({capitulo: {estrategia: euros}}, total). Es la misma renta variable que ensena la
+    pestana Analisis: el plan de pensiones entra solo por su parte de bolsa."""
+    conn = conectar()
+    c = conn.cursor()
+    filas = c.execute("""SELECT id, tipo, vehiculo, composicion, exposicion_detalle, estrategia
+                         FROM activos WHERE activo=1 AND pilar='RENTA_VARIABLE'""").fetchall()
+    res = {}
+    for activo_id, tipo, vehiculo, composicion, expo, estrategia in filas:
+        v = valor_actual_activo(c, activo_id)
+        if not v:
+            continue
+        if tipo == 'PENSIONES':
+            v *= REPARTO_PENSIONES.get('RENTA_VARIABLE', 0.0)
+        cap, est = capitulo_rv(tipo, vehiculo, composicion, expo, estrategia)
+        res.setdefault(cap, {})
+        res[cap][est] = res[cap].get(est, 0.0) + v
+    conn.close()
+    return res, sum(sum(d.values()) for d in res.values())
 
 
 def _coste_activo(c, activo_id):

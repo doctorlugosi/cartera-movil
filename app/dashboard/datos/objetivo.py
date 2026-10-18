@@ -354,7 +354,8 @@ def _filas_desde(hijos, actual_eur, total_padre_eur):
     for clave, ae in actual_eur.items():
         if clave not in usados and ae > 0.01:
             act_pct = (ae / tot * 100.0) if tot else 0.0
-            filas.append({'clave': clave, 'etiqueta': clave.title(), 'obj': None,
+            filas.append({'clave': clave, 'etiqueta': clave.replace('_', ' ').capitalize(),
+                          'obj': None,
                           'act_pct': act_pct, 'act_eur': ae, 'nota': '',
                           'desv': None, 'ajuste_eur': None})
     return filas, tot
@@ -368,22 +369,35 @@ def subcomparativa(clave_pilar, escenario='estable'):
     bloques = []
 
     if clave_pilar == 'RENTA_VARIABLE':
-        rv, total = consultas.distribucion_rv_por_vehiculo()  # {'ACCION':(v,pct),...}
-        mapa = {'ACCIONES': 'ACCION', 'ETFS': 'ETF', 'FONDOS_Y_CARTERAS': 'FONDOS'}
-        actual = {k: rv.get(v, (0.0, 0.0))[0] for k, v in mapa.items()}
+        # Los tres capitulos y sus estrategias (18-10-2026). Que activo va a cada uno lo
+        # decide consultas.capitulo_rv(), la misma regla que usa la hoja RENTA_VARIABLE del
+        # Plan; el plan de pensiones entra solo por su parte de bolsa.
+        caps, total = consultas.rv_por_capitulo()
+        por_clave = {_clave(cap): (cap, d) for cap, d in caps.items()}
+        actual = {k: sum(d.values()) for k, (_cap, d) in por_clave.items()}
         filas, _ = _filas_desde(hijos_objetivo('RENTA_VARIABLE'), actual, total)
-        bloques.append(('Por vehículo', filas))
-
-        # Acciones -> Dividendos / Crecimiento
-        por_estr = consultas.rv_acciones_por_estrategia()
-        act_estr = {'DIVIDENDOS': (por_estr.get('DIVIDENDOS') or (0.0,))[0],
-                    'CRECIMIENTO': (por_estr.get('CRECIMIENTO') or (0.0,))[0]}
-        tot_acc = sum(act_estr.values())
-        filas_acc, _ = _filas_desde(hijos_objetivo('RENTA_VARIABLE > ACCIONES'),
-                                    act_estr, tot_acc)
-        bloques.append(('Acciones por estrategia', filas_acc))
+        bloques.append(('Por capítulo', filas))
+        orden = [h[0] for h in hijos_objetivo('RENTA_VARIABLE')]
+        for k in orden + [k for k in por_clave if k not in orden]:
+            if k not in por_clave:
+                continue
+            cap, d = por_clave[k]
+            act = {_clave(e): v for e, v in d.items()}
+            filas_c, _ = _filas_desde(hijos_objetivo(f'RENTA_VARIABLE > {k}'), act,
+                                      sum(d.values()))
+            # Lo que falta o sobra de cada estrategia se mide contra el tamano OBJETIVO de su
+            # capitulo, no contra lo que tiene hoy: asi las estrategias suman lo que le falta
+            # o sobra al capitulo, igual que en la hoja RENTA_VARIABLE del Plan.
+            obj_cap = next((f['obj'] for f in filas if f['clave'] == k), None)
+            if obj_cap is not None:
+                meta = obj_cap / 100.0 * total
+                for f in filas_c:
+                    if f['obj'] is not None:
+                        f['ajuste_eur'] = f['obj'] / 100.0 * meta - f['act_eur']
+            bloques.append((f'{cap} por estrategia', filas_c))
 
         # Dividendos -> sectores (segun escenario)
+        por_estr = consultas.rv_acciones_por_estrategia()
         div = por_estr.get('DIVIDENDOS')
         if div:
             _valor, _carne, sectores = div

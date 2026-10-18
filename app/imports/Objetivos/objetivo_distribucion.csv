@@ -1,20 +1,21 @@
 ﻿Pilar;Categoria;Subcategoria;Detalle;Peso;Nota
 Renta Variable;;;;65;
-;Acciones;;;75;"3000 €/empresa; diversificar por sectores"
+;Acciones individuales;;;40;"3000 €/empresa; diversificar por sectores"
 ;;Dividendos;;95;reparto por sector en objetivo_sectores.csv (por escenario)
 ;;Crecimiento;;5;"oportunidades; 7-8 empresas"
-;Fondos y carteras;;;20;"plano; ajustar sin invertir en los 3 primeros"
-;ETFs;;;5;
-;;Regiones;;60;
-;;;Global;50;obj 8000 €
-;;;Desarrollados;20;obj 2000 €
-;;;Emergentes;30;"obj 3000 €; FRK FTSE India"
-;;Tematicas;;40;
-;;;IA;26;GX Robotics AI
-;;;Uranio;26;Global X Uranium
-;;;ETF 1;16;por adquirir
-;;;ETF 2;16;por adquirir
-;;;ETF 3;16;por adquirir
+;Fondos globales;;;50;fondos indexados y ETF, por estrategia
+;;Desarrollados;;55;iShares Developed World Index Fund (IE) S Acc EUR · IE000ZYRH0Q7
+;;Emergentes;;15;Vanguard Emerging Markets Stock Index Fund · IE0031786142
+;;Consumo básico;;8;Xtrackers MSCI World Consumer Staples 1C · IE00BM67HN09
+;;Energía;;7;iShares MSCI World Energy Sector · IE00BJ5JP105
+;;Inmobiliario;;6;iShares Developed Real Estate Index Fund (IE) S2 USD · IE0003IV3OJ8
+;;Materiales;;5;Xtrackers MSCI World Materials 1C · IE00BM67HS53
+;;Salud;;4;Xtrackers MSCI World Health Care 1C · IE00BM67HK77
+;;Temáticas;;0;fuera del objetivo
+;Gestión activa;;;10;
+;;Value;;;Bestinver
+;;Roboadvisors;;;MyInvestor
+;;Pensiones;;;solo la parte de renta variable del plan
 Renta Fija;;;;12;solo bonos/iBonds (el crowdlending va en Inv. Alternativas)
 ;Bloque conservador;;;28;solo AAA
 ;Bloque rentabilidad;;;36;resto
