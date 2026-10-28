@@ -133,13 +133,20 @@ def mostrar():
 
 
     # ── Cabecera ──────────────────────────────────────────────────────
+    # Al lado, el patrimonio invertido (25-10-2026, peticion suya): el total sin los
+    # inmuebles, que es el que cuenta el Plan para la salida de 2030 (SENDA, columna TOTAL).
+    invertido = consultas.patrimonio_plan(total)
     st.markdown(
-        "<p style='color:#848E9C;font-size:12px;margin:0 0 1px;'>Patrimonio total</p>",
-        unsafe_allow_html=True
-    )
-    st.markdown(
+        "<div style='display:flex;flex-wrap:wrap;align-items:flex-end;gap:6px 28px;'>"
+        "<div><p style='color:#848E9C;font-size:12px;margin:0 0 1px;'>Patrimonio total</p>"
         f"<p style='color:#EAECEF;font-size:34px;font-weight:600;margin:0;line-height:1.0;'>"
-        f"{formato_eur(total)} &#8364;</p>",
+        f"{formato_eur(total)} &#8364;</p></div>"
+        "<div title='El patrimonio total sin los inmuebles: el que cuenta el Plan para la "
+        "salida de 2030 (hoja SENDA, columna TOTAL)'>"
+        "<p style='color:#848E9C;font-size:12px;margin:0 0 1px;'>Patrimonio invertido</p>"
+        f"<p style='color:#EAECEF;font-size:26px;font-weight:600;margin:0;line-height:1.0;'>"
+        f"{formato_eur(invertido)} &#8364;</p></div>"
+        "</div>",
         unsafe_allow_html=True
     )
 

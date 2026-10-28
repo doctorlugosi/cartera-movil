@@ -81,6 +81,14 @@ def _etiqueta_mes_corto(fecha_iso):
     return f"{MESES_ES_CORTO[mes]} {anio % 100:02d}"
 
 
+def _mes_anio(fecha_iso):
+    """'2029-08-15' -> 'ago 2029'. Sin fecha -> 'N/D'."""
+    try:
+        return f"{MESES_ES_CORTO[int(fecha_iso[5:7])].lower()} {int(fecha_iso[:4])}"
+    except (TypeError, ValueError, KeyError):
+        return 'N/D'
+
+
 def encabezado_columnas(columnas):
     """columnas: lista de (texto, flex_o_ancho_css, alineacion)."""
     celdas = ''.join(
@@ -351,21 +359,26 @@ def panel_criptoactivos(detalle):
 
 
 def panel_renta_fija(detalle):
+    # «Vencimiento» en vez de «Sector» (25-10-2026, peticion suya): en renta fija el sector
+    # decia «Bono» en todas las filas. El vencimiento sale de bonos.csv.
+    vencimientos = consultas.vencimientos_activos()
+    # por vencimiento, el mas cercano primero; lo que no tenga fecha, al final
+    detalle = sorted(detalle, key=lambda r: vencimientos.get(r[-3]) or '9999-12-31')
     st.markdown(encabezado_columnas([
         ('Activo', 'flex:1;', 'left'),
-        ('Sector', 'width:90px;', 'center'),
+        ('Vencimiento', 'width:90px;', 'center'),
         ('Geografia', 'width:70px;', 'center'),
         ('Valor', 'width:90px;', 'right'),
     ]), unsafe_allow_html=True)
     for row in detalle:
-        nombre, broker, divisa, composicion, sector, geografia, vehiculo, ticker, *_, valor, cantidad = row
+        nombre, broker, divisa, composicion, sector, geografia, vehiculo, ticker, *_, activo_id, valor, cantidad = row
         nombre_corto = nombre.replace(f"{broker} - ", "")
         st.markdown(
             f"<div style='display:flex;justify-content:space-between;"
             f"padding:5px 0;border-bottom:1px solid #1E2329;'>"
             f"<span style='color:#EAECEF;font-size:14px;flex:1;'>{nombre_corto}</span>"
             f"<span style='color:#848E9C;font-size:14px;width:90px;text-align:center;'>"
-            f"{sector or 'N/D'}</span>"
+            f"{_mes_anio(vencimientos.get(activo_id))}</span>"
             f"<span style='color:#848E9C;font-size:14px;width:70px;text-align:center;'>"
             f"{geografia or 'N/D'}</span>"
             f"<span style='color:#EAECEF;font-size:14px;font-weight:600;width:90px;"

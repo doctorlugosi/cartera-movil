@@ -599,6 +599,19 @@ def valor_inmuebles(c, fecha=None):
     return total, sin_dato
 
 
+def patrimonio_plan(total=None):
+    """El «patrimonio invertido» de la pestana Patrimonio (25-10-2026): el total del cuadro de
+    mando MENOS los inmuebles. Es el patrimonio con el que se cuenta para la salida de 2030:
+    el de CARTERA y el de la fila «Hoy» de la columna TOTAL de la hoja SENDA del Plan (que lo
+    recibe por exportar_plan.py). Se le puede pasar el total si ya esta calculado."""
+    if total is None:
+        total, _ = patrimonio_total()
+    conn = conectar()
+    inmuebles, _ = valor_inmuebles(conn.cursor())
+    conn.close()
+    return total - inmuebles
+
+
 # DE QUE ESTA HECHO EL PLAN DE PENSIONES, que no es lo que dice su etiqueta.
 # El P.P. Repsol Materials tiene pilar='RENTA_VARIABLE' en la base de datos, asi que contado
 # a pelo mete sus 63.486 EUR enteros en bolsa. Dentro lleva un 57 % de renta fija. Contado a
@@ -714,6 +727,34 @@ def materias_primas_por_camara(activo_id):
         for camara, cantidad in filas
     ]
     return sorted(resultado, key=lambda x: -x[1])
+
+
+# EL VENCIMIENTO DE LA RENTA FIJA (25-10-2026), para la columna «Vencimiento» de la tarjeta de
+# renta fija de la pestana Distribucion. Sale de imports/clasificacion/bonos.csv, que es donde
+# vive todo lo de cada bono (lo escriben importar_tesoro.py y exportar_carneleche.py). Los ETF
+# iBonds llevan alli la fecha de vencimiento fija de su folleto.
+CSV_BONOS = os.path.join(os.path.dirname(__file__), '..', '..', 'imports', 'clasificacion',
+                         'bonos.csv')
+
+
+def vencimientos_activos():
+    """{activo_id: 'AAAA-MM-DD'} de los activos cuyo ISIN tiene vencimiento en bonos.csv."""
+    import csv
+    por_isin = {}
+    try:
+        with open(CSV_BONOS, encoding='utf-8-sig', newline='') as f:
+            for r in csv.DictReader(f):
+                isin, venc = (r.get('isin') or '').strip(), (r.get('vencimiento') or '').strip()
+                if isin and venc:
+                    por_isin[isin] = venc
+    except OSError:
+        return {}
+    conn = conectar()
+    res = {aid: por_isin[isin] for aid, isin in
+           conn.execute("SELECT id, isin FROM activos WHERE isin IS NOT NULL").fetchall()
+           if isin in por_isin}
+    conn.close()
+    return res
 
 
 def distribucion_rv_por_vehiculo():
