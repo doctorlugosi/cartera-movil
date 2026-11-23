@@ -57,7 +57,7 @@ CSS_GLOBAL = """
     div[class*="st-key-nav_pestanas"] [data-testid="stHorizontalBlock"] {
         flex-direction: row !important;
         flex-wrap: nowrap !important;
-        gap: 4px !important;
+        gap: 3px !important;
         background-color: #1E2329;
         border-radius: 10px;
         padding: 4px;
@@ -68,21 +68,34 @@ CSS_GLOBAL = """
         min-width: 0 !important;
     }
     div[class*="st-key-nav_pestanas"] [data-testid="stColumn"]:last-child {
-        flex: 0 0 40px !important;
+        flex: 0 0 34px !important;
     }
+    /* Con cinco pestañas (llegó Plan, 23-11-2026) el texto no cabía al lado del icono en
+       el movil: «Patrim...», «Distrib...». El icono va ENCIMA del texto, como en el boceto. */
     div[class*="st-key-nav_pestanas"] .stButton button {
         background-color: transparent !important;
         border: 1px solid transparent !important;
-        padding: 8px 4px !important;
-        font-size: 12px !important;
-        gap: 4px !important;
+        padding: 6px 1px !important;
+        font-size: 10.5px !important;
+        gap: 2px !important;
+        flex-direction: column !important;
+    }
+    div[class*="st-key-nav_pestanas"] .stButton button > div,
+    div[class*="st-key-nav_pestanas"] .stButton button > div > span {
+        flex-direction: column !important;
+        align-items: center !important;
+        gap: 2px !important;
+        max-width: 100% !important;
+    }
+    div[class*="st-key-nav_pestanas"] .stButton button div[data-testid="stMarkdownContainer"] {
+        max-width: 100% !important;
     }
     div[class*="st-key-nav_pestanas"] .stButton button[kind="primary"] {
         background-color: #0B0E11 !important;
         border: 1px solid #F0B90B !important;
     }
     div[class*="st-key-nav_pestanas"] .stButton button p {
-        font-size: 12px !important;
+        font-size: 10.5px !important;
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
