@@ -21,13 +21,20 @@ LOS SEMÁFOROS, con medio euro de tolerancia para que un céntimo de redondeo no
     pero el ahorro del mes cumple (lo que falta es mercado); rojo si va por detrás y el ahorro
     tampoco llega.
 
-La cartera y lo fiscal llegan en los pasos siguientes.
+LO FISCAL va al final, en una pestaña que se despliega (decisión suya, 23-11-2026): el IRPF del
+ahorro que toca pagar y qué pérdidas latentes se pueden realizar para bajarlo, por pilar. Los
+datos son los de la hoja FISCAL del plan (que salen de la cadena de KUBER); lo único de aquí es
+la simulación al marcar o quitar un pilar, con la MISMA escala de la hoja, y la pestaña avisa si
+la escala no da la cuota de la hoja.
+
+La cartera llega en un paso siguiente.
 """
 import json
 import os
 import sqlite3
 import sys
 from datetime import date
+from html import escape
 
 import streamlit as st
 
@@ -38,6 +45,7 @@ if RUTA_DASHBOARD not in sys.path:
 from datos import consultas
 from estilo import AMARILLO, VERDE, ROJO, GRIS_DESACTIVADO
 from utilidades import formato_eur
+from componentes import fila_clicable
 
 JSON_PANEL = os.path.join(os.path.dirname(RUTA_DASHBOARD), 'exports', 'plan_panel.json')
 TOLERANCIA = 0.5          # euros que se dan por iguales (redondeos de céntimos)
@@ -101,6 +109,39 @@ CSS = """<style>
 div[class*="st-key-plan_meses"] div[role="radiogroup"]{display:grid !important;width:100% !important;
   grid-template-columns:repeat(6,minmax(0,1fr));gap:6px !important}
 div[class*="st-key-plan_meses"] div[role="radiogroup"] > label{margin:0 !important;min-width:0 !important}
+div[class*="st-key-plan_fiscal"] [data-testid="stVerticalBlock"]{gap:6px !important}
+div[data-testid="stExpander"] summary,div[data-testid="stExpander"] summary:hover,
+div[data-testid="stExpander"] summary:focus,div[data-testid="stExpander"] summary:focus-visible{
+  background:#1E2329 !important;color:#EAECEF !important}
+div[data-testid="stExpander"] summary p{font-size:15px !important;font-weight:700 !important}
+.pl-fc{background:#0B0E11;border-radius:10px;padding:12px;margin-bottom:8px}
+.pl-fl{font-size:11px;color:#848E9C;font-weight:600}
+.pl-fv{font-size:24px;font-weight:700;color:#EAECEF;margin:4px 0 2px;line-height:1.15}
+.pl-fs{font-size:11px;color:#C7CBD1;line-height:1.35}
+.pl-ft{font-size:12px;color:#848E9C;margin:6px 0 0}
+.pl-fp{display:grid;grid-template-columns:36px 1fr auto;gap:6px 10px;align-items:center;
+  background:#0B0E11;border-radius:10px;padding:10px 12px}
+.pl-sw{position:relative;display:inline-block;width:36px;height:20px;border-radius:10px;background:#2B3139}
+.pl-sw::after{content:"";position:absolute;top:3px;left:3px;width:14px;height:14px;border-radius:50%;
+  background:#848E9C}
+.pl-sw.on{background:#0ECB81}
+.pl-sw.on::after{left:19px;background:#0B0E11}
+.pl-sw.no{opacity:.35}
+.pl-fn{display:flex;flex-direction:column;font-size:13px;font-weight:600;color:#EAECEF;min-width:0}
+.pl-fa{display:flex;flex-direction:column;text-align:right;font-size:13px;font-weight:700;color:#EAECEF}
+.pl-fn small,.pl-fa small{font-size:11px;font-weight:400;color:#848E9C;margin-top:2px}
+.pl-fb{grid-column:2 / 4;height:6px;background:#2B3139;border-radius:3px;overflow:hidden}
+.pl-fb b{display:block;height:6px}
+.pl-det{margin:0 0 4px 12px;font-size:12px;color:#C7CBD1}
+.pl-det summary{cursor:pointer;color:#848E9C;padding:2px 0 4px;list-style:none}
+.pl-det summary::-webkit-details-marker{display:none}
+.pl-det summary::before{content:"▸ "}
+.pl-det[open] summary::before{content:"▾ "}
+.pl-pos{display:flex;justify-content:space-between;gap:10px;padding:4px 0;border-top:1px solid #2B3139}
+.pl-pos em{font-style:normal;font-size:10px;color:#F0B90B;border:1px solid #F0B90B;border-radius:4px;
+  padding:0 4px;margin-left:6px;white-space:nowrap}
+.pl-tot{display:flex;justify-content:space-between;gap:10px;font-size:13px;font-weight:700;color:#EAECEF;
+  border-top:1px solid #2B3139;margin-top:4px;padding-top:8px}
 </style>"""
 
 
@@ -311,6 +352,110 @@ def _patrimonio(m, obj_fin, inicio_ref):
     return h + "</div>"
 
 
+# ── lo fiscal ─────────────────────────────────────────────────────────────────────────────────
+PILAR_COLOR = {'Renta variable': '#FFD54A', 'Ligados a inflación': '#E0A030',
+               'Renta fija nominal': '#8B6914', 'Oro y plata': '#F0B90B', 'Liquidez': '#848E9C',
+               'Cripto': '#D4921A', 'Préstamos / alternativos': '#B8860B'}
+
+
+def _cuota(base, tramos):
+    """La cuota de la escala del ahorro: la misma cuenta, tramo a tramo, que la hoja FISCAL."""
+    return sum(max(0.0, min(base, base if hasta is None else hasta) - desde) * tipo
+               for desde, hasta, tipo in tramos)
+
+
+def _marginal(base, tramos):
+    """El tipo del tramo en el que cae el euro siguiente: lo que ahorra un euro de pérdida."""
+    for desde, hasta, tipo in tramos:
+        if hasta is None or base < hasta:
+            return tipo
+    return tramos[-1][2]
+
+
+def _seccion_fiscal(f):
+    """La pestaña «Fiscal» del final: se despliega al tocarla. Cada pilar con pérdidas
+    compensables se marca o se quita tocándolo, y las dos tarjetas de arriba lo recalculan.
+    Las marcas son de esta sesión (no tocan las del PANEL del Excel)."""
+    with st.expander(f"Fiscal {f['ano']}" if f else "Fiscal"), st.container(key="plan_fiscal"):
+        if not f:
+            st.markdown("<div class='pl-fs'>Sin datos fiscales: hace falta fiscal_&lt;año&gt;.json, "
+                        "que deja la cadena de KUBER, y volver a generar el plan.</div>",
+                        unsafe_allow_html=True)
+            return
+        grupos = {}
+        for p in f['posiciones']:
+            grupos.setdefault(p['pilar'], []).append(p)
+        comp = {k: sum(-p['latente'] for p in v if not p['recompra_2m'] and p['latente'])
+                for k, v in grupos.items()}
+        orden = sorted(grupos, key=lambda k: (-comp[k], k))
+        marcas = st.session_state.setdefault('plan_fis_marcas', {})
+        for k in orden:                    # de entrada, marcado todo lo que se puede realizar
+            marcas.setdefault(k, comp[k] > TOLERANCIA)
+        tramos, base, marginal = f['tramos'], f['base'], _marginal(f['base'], f['tramos'])
+        realizas = sum(comp[k] for k in orden if marcas[k] and comp[k] > TOLERANCIA)
+        ahorras = f['cuota'] - _cuota(max(0.0, base - realizas), tramos)
+        datos = f" Datos de KUBER del {_fecha(f['datos_del']):%d-%m-%Y}." if f.get('datos_del') else ''
+        h = (f"<div class='pl-fc'><div class='pl-fl'>IRPF del ahorro {f['ano']} · a pagar en junio "
+             f"de {f['ano'] + 1}</div><div class='pl-fv'>{_eur(f['a_pagar'])}</div>"
+             f"<div class='pl-fs'>Cuota de {_eur(f['cuota'])} menos {_eur(f['retenido'])} ya "
+             f"retenidos · base del ahorro {_eur(base)}</div></div>"
+             f"<div class='pl-fc'><div class='pl-fl'>Si realizas las pérdidas marcadas</div>"
+             f"<div class='pl-fv' style='color:{VERDE if realizas > TOLERANCIA else '#EAECEF'}'>"
+             f"{_eur(f['a_pagar'] - ahorras)}</div><div class='pl-fs'>")
+        h += (f"Pagas {formato_eur(ahorras)} € menos · realizas {formato_eur(realizas)} € de "
+              f"pérdidas · cada euro de pérdida ahorra un {_pct(marginal)}"
+              if realizas > TOLERANCIA else "No hay ninguna pérdida marcada.")
+        h += ("</div></div><div class='pl-ft'>Pérdidas que puedes realizar, por pilar. Toca un "
+              "pilar para marcarlo o quitarlo.</div>")
+        if abs(_cuota(base, tramos) - f['cuota']) >= 1:
+            h += ("<div class='pl-fs' style='color:#F6465D'>Aviso: la escala no da la cuota de la "
+                  "hoja FISCAL; la simulación no es fiable. Revisa el plan.</div>")
+        st.markdown(h, unsafe_allow_html=True)
+
+        tope = max([c for c in comp.values() if c > TOLERANCIA] or [1.0])
+        for i, k in enumerate(orden):
+            v, activo = grupos[k], comp[k] > TOLERANCIA
+            on = activo and marcas[k]
+            susp = sum(1 for p in v if p['recompra_2m'])
+            cuenta = len(v) - susp
+            pie = f"{cuenta} {'posición' if cuenta == 1 else 'posiciones'}" + \
+                (f" · {susp} en suspenso" if susp else '')
+            fila = (f"<div class='pl-fp'><span class='pl-sw{' on' if on else ''}"
+                    f"{'' if activo else ' no'}'></span>"
+                    f"<div class='pl-fn'><span>{_punto(PILAR_COLOR.get(k, '#848E9C'))} "
+                    f"{escape(k)}</span><small>{pie}</small></div>"
+                    f"<div class='pl-fa'>{_eur(comp[k])}<small>"
+                    + (f"≈ {formato_eur(comp[k] * marginal)} € de impuesto" if activo else '—')
+                    + f"</small></div><div class='pl-fb'><b style='width:{comp[k] / tope * 100:.1f}%;"
+                    f"background:{VERDE if on else GRIS_DESACTIVADO}'></b></div></div>")
+            if activo:
+                if fila_clicable(fila, key=f"plan_fis_{i}"):
+                    marcas[k] = not marcas[k]
+                    st.rerun()
+            else:
+                st.markdown(fila, unsafe_allow_html=True)
+            n = len(v)
+            det = (f"<details class='pl-det'><summary>Ver "
+                   f"{'la posición' if n == 1 else f'las {n} posiciones'}</summary>")
+            for p in sorted(v, key=lambda p: p['latente'] or 0):
+                nombre = p['nombre'].split(' - ', 1)[-1]
+                tk = p['valor'] if p['valor'] not in ('', '—') else ''
+                det += (f"<div class='pl-pos'><span>{escape((tk + ' · ' if tk else '') + nombre)}"
+                        + ("<em>recompra reciente: no cuenta</em>" if p['recompra_2m'] else '')
+                        + f"</span><span style='color:{GRIS_DESACTIVADO if p['recompra_2m'] else ROJO};"
+                        f"white-space:nowrap'>{_eur(p['latente'])}</span></div>")
+            st.markdown(det + "</details>", unsafe_allow_html=True)
+
+        st.markdown(
+            f"<div class='pl-tot'><span>Total marcado</span><span>{_eur(realizas)}</span></div>"
+            f"<div class='pl-fs' style='margin-top:8px'>Realizar una pérdida aplaza el impuesto, no "
+            f"lo gana: compras más barato y pagarás más cuando vendas. En acciones, fondos y bonos "
+            f"la pérdida no cuenta si compras el mismo valor en los dos meses antes o después de "
+            f"venderlo, o en el año si no cotiza en un mercado de la UE. Cada posición va en su "
+            f"pilar por su tipo y su nombre.{datos} No soy asesor fiscal: confírmalo antes de "
+            f"vender.</div>", unsafe_allow_html=True)
+
+
 # ── la pestaña ────────────────────────────────────────────────────────────────────────────────
 def mostrar():
     d = cargar_panel()
@@ -363,3 +508,4 @@ def mostrar():
     inicio_ref = next((x['mes'] for x in meses if x['patrimonio'][0] is not None), None)
     h += _patrimonio(m, obj_fin, inicio_ref)
     st.markdown(h, unsafe_allow_html=True)
+    _seccion_fiscal(d.get('fiscal'))
