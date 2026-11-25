@@ -20,6 +20,9 @@ LOS SEMÁFOROS, con medio euro de tolerancia para que un céntimo de redondeo no
   · Patrimonio: la regla del PANEL del plan. Verde si va en objetivo; ámbar si va por detrás
     pero el ahorro del mes cumple (lo que falta es mercado); rojo si va por detrás y el ahorro
     tampoco llega.
+  Se pintan con ICONOS, no con círculos, y sin leyenda (los eligió Jose el 25-11-2026): un ✓ en
+  un círculo verde, un triángulo de aviso ámbar, una ✗ en un círculo rojo y un reloj gris si está
+  pendiente.
 
 LO FISCAL va al final, en una pestaña que se despliega (decisión suya, 23-11-2026): el IRPF del
 ahorro que toca pagar y qué pérdidas latentes se pueden realizar para bajarlo, por pilar. Los
@@ -57,9 +60,6 @@ MES_L = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto
 # (clave en el JSON, nombre, más es mejor)
 ASPECTOS = (('ahorro', 'Ahorro', True), ('gasto', 'Gastos', False),
             ('ingresos', 'Ingresos', True))
-# lo que mueve el ahorro del mes: ahorro = nómina + rentas − gasto − impuestos
-MOTIVOS = (('rentas', 'Rentas cobradas', True), ('nomina', 'Nómina y paga variable', True),
-           ('gasto', 'Gasto', False), ('impuestos', 'Impuestos', False))
 
 CSS = """<style>
 .pl-tit{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin:2px 0 12px}
@@ -74,16 +74,15 @@ CSS = """<style>
 .pl-s{font-size:11px;color:#C7CBD1;line-height:1.3}
 .pl-prog{height:6px;background:#2B3139;border-radius:3px;overflow:hidden;margin:3px 0 6px}
 .pl-prog b{display:block;height:6px;background:#F0B90B}
-.pl-ley{display:flex;gap:12px;flex-wrap:wrap;font-size:11px;color:#848E9C;margin:2px 0 4px}
-.pl-ley span{display:inline-flex;align-items:center;gap:5px}
 .pl-p{display:inline-block;width:10px;height:10px;border-radius:50%;flex:none}
 .pl-h2{font-size:15px;font-weight:700;color:#EAECEF;margin:14px 0 8px}
 .pl-h2 small{font-weight:400;color:#848E9C;font-size:12px;margin-left:6px}
 .pl-caja{background:#1E2329;border-radius:12px;padding:12px;margin-bottom:10px}
 .pl-cab{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
 .pl-cab b{font-size:14px;color:#EAECEF}
-.pl-cab span{display:flex;gap:6px;font-size:11px;color:#848E9C;align-items:center}
-.pl-cab span .pl-p{margin-left:6px}
+.pl-cab span{display:flex;gap:12px;font-size:11px;color:#848E9C;align-items:center}
+.pl-cab span span{gap:4px}
+.pl-ic{display:inline-block;flex:none;vertical-align:-3px}
 .pl-lin{display:grid;grid-template-columns:40px 1fr;gap:4px 8px;align-items:center;margin:6px 0 8px}
 .pl-q{font-size:11px;color:#848E9C}
 .pl-pista{position:relative;height:10px;background:#2B3139;border-radius:5px}
@@ -93,18 +92,15 @@ CSS = """<style>
 .pl-nums{grid-column:2;display:flex;justify-content:space-between;gap:8px;font-size:11px;color:#C7CBD1}
 .pl-gris{color:#848E9C}
 .pl-nota{font-size:11px;color:#848E9C;margin:-2px 0 10px;line-height:1.4}
-.pl-t{font-size:13px;font-weight:700;color:#EAECEF;margin-bottom:6px}
-.pl-mot{display:grid;grid-template-columns:12px 1fr;gap:8px;align-items:start;font-size:12px;
-  color:#C7CBD1;padding:4px 0;line-height:1.35}
-.pl-mot .pl-p{margin-top:3px}
-.pl-res{border-top:1px solid #2B3139;margin-top:6px;padding-top:8px;font-size:13px;font-weight:700}
-.pl-fila{display:flex;justify-content:space-between;align-items:center;gap:8px}
-.pl-qq{font-size:11px;color:#848E9C;font-weight:600}
-.pl-v{font-size:20px;font-weight:700;color:#F0B90B;line-height:1.2}
 .pl-o{font-size:12px;color:#C7CBD1}
-.pl-der{text-align:right;font-size:13px;font-weight:700;max-width:52%}
-.pl-der small{display:block;font-size:11px;font-weight:400;color:#848E9C;margin-top:2px}
-.pl-pie{display:flex;justify-content:space-between;font-size:12px;color:#C7CBD1}
+.pl-pt{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.pl-pl{font-size:13px;color:#848E9C;font-weight:600}
+.pl-pl .pl-ic{margin-left:6px}
+.pl-pv{font-size:22px;font-weight:700;color:#F0B90B;line-height:1.2;margin:3px 0;white-space:nowrap}
+.pl-po{font-size:12px;color:#C7CBD1}
+.pl-barra{height:16px;border:2px solid #EAECEF;border-radius:8px;overflow:hidden;margin:14px 0 6px}
+.pl-barra b{display:block;height:100%;background:#F0B90B}
+.pl-pie2{display:flex;justify-content:space-between;font-size:13px;color:#EAECEF}
 .pl-aviso{background:#1E2329;border-radius:12px;padding:14px;font-size:13px;color:#C7CBD1;line-height:1.45}
 div[class*="st-key-plan_meses"] div[role="radiogroup"]{display:grid !important;width:100% !important;
   grid-template-columns:repeat(6,minmax(0,1fr));gap:6px !important}
@@ -184,6 +180,24 @@ def _fecha(iso):
 
 def _punto(color):
     return f"<span class='pl-p' style='background:{color}'></span>"
+
+
+# el semáforo como icono: (color del trazo, dibujo) según el color que da _sem()
+_ICONOS = {
+    VERDE: (VERDE, "<circle cx='12' cy='12' r='9'/><path d='M8 12.4l2.7 2.7L16.2 9.6'/>"),
+    AMARILLO: (AMARILLO, "<path d='M12 3.6L21.4 19.8H2.6z'/><path d='M12 9.6v4.6'/>"
+                         "<circle cx='12' cy='17' r='1.1' fill='#F0B90B' stroke='none'/>"),
+    ROJO: (ROJO, "<circle cx='12' cy='12' r='9'/><path d='M9 9l6 6M15 9l-6 6'/>"),
+    GRIS_DESACTIVADO: ('#848E9C', "<circle cx='12' cy='12' r='9'/><path d='M12 7.5V12l3 2'/>"),
+}
+
+
+def _icono(color):
+    """✓ si cumple, triángulo si falla por poco, ✗ si no cumple y un reloj si está pendiente."""
+    trazo, dibujo = _ICONOS.get(color, _ICONOS[GRIS_DESACTIVADO])
+    return (f"<svg class='pl-ic' viewBox='0 0 24 24' width='16' height='16' fill='none' "
+            f"stroke='{trazo}' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'>"
+            f"{dibujo}</svg>")
 
 
 def _sem(o, r, mas, margen):
@@ -276,79 +290,43 @@ def _aspecto(nombre, mas, etq_mes, mes, ano, margen):
                 f"</span></div></div>")
 
     return (f"<div class='pl-caja'><div class='pl-cab'><b>{nombre}</b>"
-            f"<span>{_punto(c_mes)}mes{_punto(c_ano)}año</span></div>"
+            f"<span><span>mes{_icono(c_mes)}</span><span>año{_icono(c_ano)}</span></span></div>"
             + linea(etq_mes, mes, c_mes) + linea('Año', ano, c_ano) + "</div>")
 
 
-def _que_ha_pasado(m, margen):
-    """Lo que ha movido el ahorro del mes frente a lo previsto, de peor a mejor."""
-    mes_l = MES_L[int(m['mes'][5:7]) - 1]
-    h = f"<div class='pl-caja'><div class='pl-t'>Qué ha pasado en {mes_l}</div>"
-    if not m['cerrado']:
-        return h + ("<div class='pl-mot'><span></span><span>El mes aún no está cerrado: saldrá "
-                    "cuando el extracto del banco lo cubra entero.</span></div></div>")
-    motivos = []
-    for clave, nombre, mas in MOTIVOS:
-        o, r = m[clave]
-        if o is not None and r is not None:
-            motivos.append(((r - o) if mas else (o - r), nombre, o, r, mas))
-    for impacto, nombre, o, r, mas in sorted(motivos, key=lambda t: t[0]):
-        if abs(impacto) < 1:
-            color, txt = VERDE, f"{nombre}: lo previsto ({_eur(r)})."
-        else:
-            color = VERDE if impacto > 0 else _sem(o, r, mas, margen)
-            txt = (f"{nombre}: {_eur(r)} frente a {_eur(o)} previstos. "
-                   + ('Suma ' if impacto > 0 else 'Resta ') + formato_eur(abs(impacto))
-                   + " € al ahorro.")
-        h += f"<div class='pl-mot'>{_punto(color)}<span>{txt}</span></div>"
-    o, r = m['ahorro']
-    if o is not None and r is not None:
-        dif = r - o
-        txt = ('Resultado: ahorras lo previsto.' if abs(dif) < TOLERANCIA else
-               'Resultado: ahorras ' + formato_eur(abs(dif))
-               + (' € más' if dif > 0 else ' € menos') + ' de lo previsto.')
-        h += (f"<div class='pl-res' style='color:{_sem(o, r, True, margen)}'>{txt}</div>")
-    return h + "</div>"
-
-
-def _patrimonio(m, obj_fin, inicio_ref):
-    """El patrimonio del mes frente a su objetivo y, aparte, el camino hacia el objetivo de
-    fin de año. El semáforo es el del PANEL del plan (ver arriba)."""
+def _patrimonio(m, obj_fin):
+    """Patrimonio invertido, como lo pidió Jose (25-11-2026): a la izquierda el mes, con su
+    patrimonio en grande y amarillo y el objetivo debajo; al lado el año, con el mismo formato
+    (el patrimonio que se lleva y el objetivo del 31-12). Debajo, solo del año, una barra de
+    borde blanco y grueso que el dorado llena según lo conseguido, el porcentaje y lo que falta.
+    El punto junto al mes es el semáforo del PANEL del plan (ver arriba)."""
     mes_l = MES_L[int(m['mes'][5:7]) - 1]
     o, r = m['patrimonio']
     h = "<div class='pl-h2'>Patrimonio invertido</div><div class='pl-caja'>"
     if r is None:
         return h + f"<div class='pl-o'>Sin dato de patrimonio en {mes_l}.</div></div>"
-    if o is None:
-        der = ''
-        sub = ('Sin objetivo: la senda de referencia empieza en '
-               + (f"{MES_L[int(inicio_ref[5:7]) - 1]} de {inicio_ref[:4]}" if inicio_ref
-                  else 'un mes posterior'))
-    else:
+    punto = ''
+    if o is not None:
         ao, ar = m['ahorro']
         if r >= o - TOLERANCIA:
-            color, lectura = VERDE, ''          # la diferencia ya lo dice todo
+            punto = _icono(VERDE)
         elif ao is not None and ar is not None and ar >= ao - TOLERANCIA:
-            color, lectura = AMARILLO, 'detrás por mercado: tu ahorro cumple'
+            punto = _icono(AMARILLO)            # detrás, pero por mercado: el ahorro cumple
         elif ar is None:
-            color, lectura = GRIS_DESACTIVADO, 'detrás; el ahorro del mes aún no está cerrado'
+            punto = _icono(GRIS_DESACTIVADO)    # detrás, con el mes aún sin cerrar
         else:
-            color, lectura = ROJO, 'detrás, y el ahorro tampoco llega'
-        sub = f"Objetivo {_eur(o)}"
-        der = (f"<div class='pl-der' style='color:{color}'>{_punto(color)}"
-               f"<div>{_diferencia(o, r, True)}</div>"
-               + (f"<small>{lectura}</small>" if lectura else '') + "</div>")
-    h += (f"<div class='pl-fila'><div><div class='pl-qq'>En {mes_l}</div>"
-          f"<div class='pl-v'>{_eur(r)}</div><div class='pl-o'>{sub}</div></div>{der}</div>")
+            punto = _icono(ROJO)                # detrás, y el ahorro tampoco llega
+    h += (f"<div class='pl-pt'><div><div class='pl-pl'>{mes_l.capitalize()}{punto}</div>"
+          f"<div class='pl-pv'>{_eur(r)}</div>"
+          f"<div class='pl-po'>{'Objetivo ' + _eur(o) if o is not None else 'Sin objetivo'}</div></div>"
+          f"<div><div class='pl-pl'>Anual</div><div class='pl-pv'>{_eur(r)}</div>"
+          f"<div class='pl-po'>{'Objetivo ' + _eur(obj_fin) if obj_fin else 'Sin objetivo'}</div>"
+          f"</div></div>")
     if obj_fin:
         av = r / obj_fin
-        pie = ("<span style='color:#0ECB81'>objetivo del año conseguido</span>"
-               if r >= obj_fin - TOLERANCIA else f"<span>faltan {_eur(obj_fin - r)}</span>")
-        h += (f"<div style='margin-top:12px'><div class='pl-qq'>Hacia el objetivo de fin de año "
-              f"({_eur(obj_fin)} a 31-12)</div>"
-              f"<div class='pl-prog' style='margin:6px 0'><b style='width:"
-              f"{min(av, 1) * 100:.1f}%'></b></div>"
-              f"<div class='pl-pie'><span>{_pct(av, 1)} conseguido</span>{pie}</div></div>")
+        h += (f"<div class='pl-barra'><b style='width:{min(av, 1) * 100:.1f}%'></b></div>"
+              f"<div class='pl-pie2'><span>{_pct(av, 1)}</span>"
+              f"<span>Falta <b>{_eur(max(0.0, obj_fin - r))}</b></span></div>")
     return h + "</div>"
 
 
@@ -495,17 +473,12 @@ def mostrar():
             else None
 
     etq_mes = MES_C[int(sel[5:7]) - 1].capitalize()
-    h = (f"<div class='pl-ley'><span>{_punto(VERDE)}cumple</span>"
-         f"<span>{_punto(AMARILLO)}no cumple por menos del {_pct(margen)}</span>"
-         f"<span>{_punto(ROJO)}no cumple</span></div>"
-         f"<div class='pl-h2'>Ahorro, gastos e ingresos"
+    h = (f"<div class='pl-h2'>Ahorro, gastos e ingresos"
          f"<small>{MES_L[int(sel[5:7]) - 1]} y lo que va de año</small></div>")
     for clave, nombre, mas in ASPECTOS:
         h += _aspecto(nombre, mas, etq_mes, m[clave], [suma(clave, 0), suma(clave, 1)], margen)
     h += "<div class='pl-nota'>Barra: lo real. Raya blanca: el objetivo.</div>"
-    h += _que_ha_pasado(m, margen)
     obj_fin = next((x['patrimonio'][0] for x in meses if x['mes'] == f"{ano}-12"), None)
-    inicio_ref = next((x['mes'] for x in meses if x['patrimonio'][0] is not None), None)
-    h += _patrimonio(m, obj_fin, inicio_ref)
+    h += _patrimonio(m, obj_fin)
     st.markdown(h, unsafe_allow_html=True)
     _seccion_fiscal(d.get('fiscal'))

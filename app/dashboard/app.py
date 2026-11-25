@@ -23,7 +23,7 @@ if 'modo_privado' not in st.session_state:
 aplicar_estilo(st, st.session_state.modo_privado)
 
 # --- Navegacion por pestañas ---
-PESTANAS = ["Patrimonio", "Distribución", "Análisis", "Plan", "Sistema"]
+PESTANAS = ["Plan", "Análisis", "Patrimonio", "Distribución", "Sistema"]
 ICONOS_PESTANA = {
     "Patrimonio":   ":material/account_balance_wallet:",
     "Distribución": ":material/donut_small:",
@@ -33,7 +33,7 @@ ICONOS_PESTANA = {
 }
 
 if 'pestana_activa' not in st.session_state:
-    st.session_state.pestana_activa = "Patrimonio"
+    st.session_state.pestana_activa = "Plan"          # KUBER se abre en Plan (25-11-2026)
 
 with st.container(key="nav_pestanas"):
     cols = st.columns(len(PESTANAS) + 1)

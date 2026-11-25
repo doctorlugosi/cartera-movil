@@ -108,7 +108,9 @@
       // asi el usuario ve "Installing packages…", etc. en lugar de un spin mudo.
       const iv = setInterval(() => {
         const t = $("root").innerText || "";
-        if (t.includes("Patrimonio total")) {          // ya cargo -> quitar capa
+        // ya cargo -> quitar capa. KUBER se abre en Plan desde el 25-11-2026, cuyo titulo es
+        // "Plan · Camino a la IF"; "Patrimonio total" se deja por si se entra por otra pestana
+        if (t.includes("Camino a la IF") || t.includes("Patrimonio total")) {
           $("cargando").style.display = "none";
           clearInterval(iv); clearInterval(reloj);
           return;
